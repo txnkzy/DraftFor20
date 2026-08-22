@@ -11,12 +11,9 @@ export const SITE_URL =
 export const OPERATOR = "DraftFor20";
 export const CONTACT_EMAIL = "support@draftfor20.com";
 
-/** Support line. Leave empty and every phone affordance stays hidden — do not
- *  put a number here until it actually rings somewhere. */
-export const SUPPORT_PHONE = "";
-
-/** tel: href for SUPPORT_PHONE, digits only with country code. */
-export const SUPPORT_PHONE_HREF = SUPPORT_PHONE.replace(/[^\d+]/g, "");
+/** Support is email-only and deliberately so. The phone number on card
+ *  receipts is a Stripe business-profile field, set in their dashboard — it is
+ *  not rendered by this app and there is no constant for it here. */
 export const JURISDICTION = "United States";
 
 /** Last substantive revision of the legal pages. Bump when you edit them. */

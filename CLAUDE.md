@@ -319,10 +319,13 @@ Framer Motion is imported **only** by the landing scroll sequence, via
   blocked creating a test account.
 - **`lib/site.ts`** contact email is `support@draftfor20.com`, but **that
   mailbox does not exist yet** — no MX record has been created for
-  `draftfor20.com`, and mail to it bounces. `SUPPORT_PHONE` is deliberately
-  empty, which hides every phone affordance. Operator name and jurisdiction
-  are still placeholders. The privacy policy, terms and footer reference all
-  of these. Setup steps are in `DEPLOY.md`.
+  `draftfor20.com`, and mail to it bounces. Operator name and jurisdiction are
+  still placeholders. The privacy policy, terms and footer reference all of
+  these. Setup steps are in `DEPLOY.md`.
+- **Support is email-only and there is no phone number in this codebase.** The
+  support phone Stripe prints on receipts is a field in their dashboard, not a
+  constant here. Do not add one back — a number rendered by the site is a
+  number someone expects an answer on. See `DEPLOY.md`.
 - **The site's canonical domain is unsettled.** `SITE_URL` falls back to
   `draftfor20.app`, the deploy is `draftfor20.vercel.app`, and the support
   address is on `draftfor20.com`. Pick one and make the other two follow.
