@@ -102,7 +102,10 @@ declare
     'public.admin_audit_log(integer)',
     'public.df20_gen_handle()',
     'public.set_my_handle(text)',
-    'public.my_handle()'
+    'public.my_handle()',
+    -- v10: the verification gate reaches billing and admin
+    'public.df20_email_verified(uuid)',
+    'public.my_verification()'
   ];
   v_tables text[] := array['rooms','players','room_deck','room_pool','roster_entries',
                            'lots','bid_events','votes','rate_limits','category_library',

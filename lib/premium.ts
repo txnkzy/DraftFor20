@@ -131,7 +131,7 @@ export const PREMIUM_GATES = {
 
 export const PLANS = {
   premium: { label: "Premium", price: "$5", period: "/month" },
-  pass: { label: "Game Night Pass", price: "$2", period: "for 24 hours" },
+  pass: { label: "Game Night Pass", price: "$1", period: "for 24 hours" },
 } as const;
 
 export type PlanId = keyof typeof PLANS;
