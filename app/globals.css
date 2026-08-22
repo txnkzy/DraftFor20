@@ -1,26 +1,205 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ═══════════════════════════════════════════════════════════════════════════
+   DraftFor20 · live auction, not a spreadsheet
+
+   The palette carries game state, so each colour means exactly one thing:
+     coral  tension    — live bid, running clock, your turn. One place at a time.
+     gold   money      — every figure the players are actually arguing about.
+     teal   resolved   — locked, passed, done, safe.
+   Player identity deliberately uses NEITHER, or the palette stops meaning
+   anything. Players are gold-marker vs bone-marker; whoever is on the clock
+   gets the coral outline.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@theme {
+  --color-board:   #14161C;
+  --color-surface: #1D2029;
+  --color-coral:   #FF5A36;
+  --color-gold:    #F5B942;
+  --color-teal:    #2DD4BF;
+  --color-ink:     #E8E6E1;
+  --color-muted:   #9C978E;
+
+  --font-display: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+  --font-body:    var(--font-instrument), ui-sans-serif, system-ui, sans-serif;
+
+  --radius-grid:    0px;
+  --radius-control: 3px;
+  --radius-card:    6px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+@layer base {
+  html { -webkit-text-size-adjust: 100%; scrollbar-color: var(--color-muted) var(--color-board); }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  body {
+    background: var(--color-board);
+    color: var(--color-ink);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior-y: none;
   }
+
+  ::selection { background: var(--color-coral); color: var(--color-ink); }
+  :focus-visible { outline: 2px solid var(--color-coral); outline-offset: 2px; }
+  input, textarea, select, button { font: inherit; color: inherit; }
+  /* NB: no overflow clip on the app wrapper. It makes Framer Motion resolve
+     the wrong scroll container and freezes useScroll. Horizontal overflow is
+     prevented at the components that could cause it instead. */
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer components {
+  .type-display {
+    font-family: var(--font-display);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 0.94;
+  }
+  .type-label {
+    font-family: var(--font-display);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    font-size: 0.6875rem;
+    line-height: 1.1;
+  }
+  /* every number in the app: bankrolls, bids, clocks. tabular so digits do
+     not shuffle sideways while a countdown runs. */
+  .type-num {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-variant-numeric: tabular-nums lining-nums;
+    font-feature-settings: "tnum" 1, "lnum" 1;
+    letter-spacing: -0.02em;
+  }
+
+  .rule        { border-color: color-mix(in oklab, var(--color-muted) 24%, transparent); }
+  .rule-strong { border-color: color-mix(in oklab, var(--color-muted) 45%, transparent); }
+
+  /* ── The Rail: spent · live · reserved ─────────────────────────────────── */
+  .rail-track {
+    background: var(--color-board);
+    border: 1px solid color-mix(in oklab, var(--color-muted) 28%, transparent);
+  }
+  .rail-spent { background: color-mix(in oklab, var(--color-muted) 18%, transparent); }
+  .hatch-reserve {
+    background-color: color-mix(in oklab, var(--color-muted) 10%, transparent);
+    background-image: repeating-linear-gradient(
+      -45deg, transparent 0 3px,
+      color-mix(in oklab, var(--color-muted) 55%, transparent) 3px 4px);
+  }
+
+  /* ── controls ─────────────────────────────────────────────────────────── */
+  .btn {
+    font-family: var(--font-display);
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-radius: var(--radius-control);
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+    transition: border-color 120ms linear, background-color 120ms linear, color 120ms linear;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  /* coral is the ACT button and nothing else */
+  .btn-primary { background: var(--color-coral); color: #14161C; border: 1px solid var(--color-coral); }
+  .btn-primary:not(:disabled):hover { background: color-mix(in oklab, var(--color-coral) 88%, white); }
+
+  .btn-ghost { background: transparent; color: var(--color-ink);
+               border: 1px solid color-mix(in oklab, var(--color-muted) 45%, transparent); }
+  .btn-ghost:not(:disabled):hover { border-color: var(--color-ink); }
+
+  /* teal is the settled / step-away action */
+  .btn-calm { background: transparent; color: var(--color-teal); border: 1px solid var(--color-teal); }
+  .btn-calm:not(:disabled):hover { background: color-mix(in oklab, var(--color-teal) 14%, transparent); }
+
+  .btn-quiet { background: var(--color-surface); color: var(--color-muted);
+               border: 1px solid color-mix(in oklab, var(--color-muted) 26%, transparent); }
+  .btn-quiet:not(:disabled):hover { color: var(--color-ink); border-color: var(--color-ink); }
+
+  .field {
+    background: var(--color-board);
+    border: 1px solid color-mix(in oklab, var(--color-muted) 36%, transparent);
+    border-radius: var(--radius-control);
+    color: var(--color-ink);
+    padding: 0.6875rem 0.75rem;
+    width: 100%;
+  }
+  .field::placeholder { color: color-mix(in oklab, var(--color-muted) 85%, transparent); }
+  .field:focus { border-color: var(--color-coral); outline: none; }
+
+  .panel { background: var(--color-surface);
+           border: 1px solid color-mix(in oklab, var(--color-muted) 20%, transparent); }
+}
+
+/* ── motion. Rare and orchestrated: the reveal, the raise, the lock. ─────── */
+@keyframes df20-deal {
+  0%   { transform: translateY(-18px) scale(0.97); opacity: 0; }
+  70%  { transform: translateY(2px)   scale(1);    opacity: 1; }
+  100% { transform: translateY(0)     scale(1);    opacity: 1; }
+}
+@keyframes df20-lock-drop {
+  0%   { transform: translateY(-12px); opacity: 0; }
+  60%  { transform: translateY(2px);   opacity: 1; }
+  100% { transform: translateY(0);     opacity: 1; }
+}
+@keyframes df20-lock-snap {
+  0%, 100% { box-shadow: inset 0 0 0 0 transparent; }
+  35%      { box-shadow: inset 0 0 0 2px var(--color-teal); }
+}
+@keyframes df20-raise-pulse {
+  0%   { transform: scale(1);    color: var(--color-coral); }
+  40%  { transform: scale(1.06); color: var(--color-coral); }
+  100% { transform: scale(1); }
+}
+@keyframes df20-reject { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-4px)} 60%{transform:translateX(4px)} }
+@keyframes df20-hatch  { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+.anim-deal      { animation: df20-deal 380ms cubic-bezier(.2,.9,.3,1) both; }
+.anim-lock-drop { animation: df20-lock-drop 320ms cubic-bezier(.2,.9,.3,1) both; }
+.anim-lock-snap { animation: df20-lock-snap 520ms ease-out both; }
+.anim-raise     { animation: df20-raise-pulse 380ms cubic-bezier(.2,.9,.3,1) both; }
+.anim-reject    { animation: df20-reject 220ms ease-out both; }
+.anim-hatch     { animation: df20-hatch 180ms ease-out 2; }
+
+/* ── the last three seconds. A colour shift, not a smaller number: at a
+   glance across a room the digit is unreadable and the pulse is not. ────── */
+@keyframes df20-clock-critical {
+  0%, 100% { color: var(--color-coral); transform: scale(1); text-shadow: none; }
+  45%      { color: #FFF1EC; transform: scale(1.07);
+             text-shadow: 0 0 26px color-mix(in oklab, var(--color-coral) 65%, transparent); }
+}
+@keyframes df20-bar-critical {
+  0%, 100% { opacity: 1; }
+  45%      { opacity: 0.45; }
+}
+/* one cycle per second, so it beats in time with the digit it sits on */
+.anim-clock-critical { animation: df20-clock-critical 1000ms ease-in-out infinite; }
+.anim-bar-critical   { animation: df20-bar-critical 1000ms ease-in-out infinite; }
+
+/* ── the won card LANDS on the roster: it arrives from above, overshoots and
+   settles, rather than being there on the next repaint. ─────────────────── */
+@keyframes df20-land {
+  0%   { transform: translateY(-160%) scale(1.18); opacity: 0; }
+  55%  { transform: translateY(7%)    scale(1.02); opacity: 1; }
+  78%  { transform: translateY(-2%)   scale(0.996); }
+  100% { transform: translateY(0)     scale(1); opacity: 1; }
+}
+@keyframes df20-land-glow {
+  0%   { background-color: color-mix(in oklab, var(--color-teal) 26%, transparent);
+         box-shadow: inset 0 0 0 1px var(--color-teal); }
+  100% { background-color: transparent; box-shadow: inset 0 0 0 1px transparent; }
+}
+.anim-land      { animation: df20-land 540ms cubic-bezier(.18,.86,.24,1) both; }
+.anim-land-glow { animation: df20-land-glow 1100ms ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

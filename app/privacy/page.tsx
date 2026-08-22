@@ -1,0 +1,189 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { Clause, LegalShell } from "@/components/site/LegalShell";
+import { CONTACT_EMAIL, OPERATOR, RETENTION_DAYS } from "@/lib/site";
+
+export const metadata: Metadata = {
+  title: "Privacy Policy — DraftFor20",
+  description: "What DraftFor20 collects, why, how long it is kept and how to have it deleted.",
+};
+
+export default function PrivacyPage() {
+  return (
+    <LegalShell title="Privacy Policy">
+      <p className="text-[0.9375rem] leading-relaxed text-muted">
+        DraftFor20 is a two-player auction draft game. This page describes exactly what it
+        stores, why it stores it, who else can see it and how to get rid of it. It covers the
+        website and the game rooms. Nothing here is boilerplate: if something is not listed below,
+        the service does not collect it.
+      </p>
+
+      <Clause heading="What you give us by playing">
+        <p>
+          <strong className="text-ink">A display name.</strong> You type it when you create or
+          join a room. It is shown to the other player, to anyone who opens the room link, and it
+          is printed on the shareable results card. Use a nickname. There is no requirement that it
+          be your real name and we never ask you to verify it.
+        </p>
+        <p>
+          <strong className="text-ink">Whatever you type into the draft.</strong> Room titles,
+          category names, and the name of every item you nominate. Bids, passes and timeouts are
+          recorded as a history so the board can be replayed and the results card can be built.
+        </p>
+        <p>
+          <strong className="text-ink">A session token.</strong> When you take a seat, the server
+          issues a random identifier and your browser keeps it in <code>localStorage</code> under a
+          key starting <code>df20:seat:</code>. It is how the server knows a bid came from you
+          without making you sign up. It works only in the one room it was issued for. It is not a
+          cookie and it is never sent to anyone but the game database. Clearing your browser
+          storage gives up your seat.
+        </p>
+      </Clause>
+
+      <Clause heading="What you give us only if you choose to host with an account">
+        <p>
+          <strong className="text-ink">An email address.</strong> Hosting an account is optional
+          and only exists so saved category templates and card branding survive between sessions.
+          Sign-in is a magic link, so there is no password to store. The address is used to send
+          that link and nothing else. There is no marketing list.
+        </p>
+        <p>
+          If you host without signing in, which is the default, we never learn your email.
+        </p>
+      </Clause>
+
+      <Clause heading="What gets collected automatically">
+        <p>
+          Our hosting and database providers keep ordinary server logs, which include IP addresses,
+          timestamps and user-agent strings, for security and abuse handling. We do not run
+          advertising trackers, we do not build behavioural profiles, and we do not sell or share
+          anything with data brokers.
+        </p>
+        <p>
+          Fonts are served from our own domain rather than a font CDN, so simply loading a page
+          does not tell any third party that you visited. One exception: generating the downloadable
+          results-card image fetches a font file from Google Fonts on the <em>server</em>, not from
+          your browser, so your IP is not exposed by it.
+        </p>
+      </Clause>
+
+      <Clause heading="Custom categories">
+        <p>
+          <strong className="text-ink">A list you type is private by default.</strong> When
+          someone builds a category through a setup link, that list belongs to that one room. It
+          is never shown to either player, never returned by any part of the site, and never
+          copied anywhere else unless the person who wrote it explicitly asks us to.
+        </p>
+        <p>
+          <strong className="text-ink">Lists involving real people are never shareable.</strong>{" "}
+          Before we even offer to add a category to the shared library, we check the category name
+          and the items for signs of real people, including obviously person-oriented names like
+          &ldquo;friend group&rdquo; or &ldquo;tier list&rdquo;. If anything trips that check the
+          option never appears, and there is no way to override it. The check is deliberately
+          cautious and will sometimes withhold a list that would have been fine.
+        </p>
+        <p>
+          <strong className="text-ink">Everything else is opt-in.</strong> After a draft finishes,
+          whoever built the list may be asked once whether to add it to the shared library.
+          It is unticked by default and declining is remembered. If a category is added, we store
+          only its name and its items. Not who played, not when, not which room.
+        </p>
+        <p>
+          <strong className="text-ink">Wikipedia lists are cached automatically.</strong> When you
+          ask for a category we do not already have, we look for a matching Wikipedia article and
+          parse it. Successful results are saved so the next person asking for the same thing does
+          not trigger another lookup. This content is already public encyclopedia material, it
+          contains nothing you typed beyond the category name, and so it is cached without asking.
+        </p>
+      </Clause>
+
+      <Clause heading="Who else can see a room">
+        <p>
+          Rooms are unlisted, not secret. Anyone holding the six-character code or the room link can
+          open it and watch the draft, including the names, picks and bids in it. There is no
+          directory and rooms are never indexed by search engines, but treat a room link the way you
+          would treat any link you paste into a group chat.
+        </p>
+        <p>
+          The results card is generated on request from the room code. If you post it, you are
+          publishing both players&apos; display names and picks. That is the intended use, and it
+          is worth saying out loud.
+        </p>
+      </Clause>
+
+      <Clause heading="Processors we use">
+        <p>
+          <strong className="text-ink">Supabase</strong> hosts the Postgres database, the realtime
+          connection and the optional host authentication. All game data lives there.
+        </p>
+        <p>
+          <strong className="text-ink">Vercel</strong> hosts and serves the application and keeps
+          short-lived request logs.
+        </p>
+        <p>
+          Both act as processors on our instructions. Neither is permitted to use your data for
+          their own purposes.
+        </p>
+      </Clause>
+
+      <Clause heading="How long it is kept">
+        <p>
+          Rooms, players, rosters and bid histories are deleted automatically{" "}
+          {RETENTION_DAYS} days after the room was created. That deletion is a scheduled database
+          job, not a promise we remember to keep by hand. Once it runs, the room link and its
+          results card stop working permanently.
+        </p>
+        <p>
+          Host accounts, saved templates and branding persist until you ask us to delete the
+          account. Provider log retention is governed by the providers above and is measured in
+          days, not years.
+        </p>
+      </Clause>
+
+      <Clause heading="Who is responsible">
+        <p>
+          {OPERATOR} is the controller of the data described here and decides how it is used. Reach
+          us at <a className="text-gold" href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
+        </p>
+      </Clause>
+
+      <Clause heading="Deleting something sooner">
+        <p>
+          Email <a className="text-gold" href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a> with
+          the room code and we will delete that room. If you have a host account, say so and we
+          will delete the account, its templates and its branding. Depending on where you live you
+          may also have the right to a copy of your data, to correct it, to object to processing or
+          to complain to a data protection authority. Ask and we will help rather than make you
+          quote statutes at us.
+        </p>
+      </Clause>
+
+      <Clause heading="Children">
+        <p>
+          DraftFor20 is not directed at children. Do not use it if you are under 13, or under 16 in
+          the EEA and UK. If you believe a child has entered personal information, email us and we
+          will remove the room.
+        </p>
+      </Clause>
+
+      <Clause heading="Security">
+        <p>
+          Traffic is encrypted in transit. Database row-level security is on for every table and no
+          client can read or write tables directly; all access goes through server-side functions
+          that authenticate the caller. Bids are validated inside the database against your live
+          balance, so a modified browser cannot spend money it does not have. No system is perfect,
+          and this is a game rather than a bank, so please do not put anything sensitive in a pick
+          name.
+        </p>
+      </Clause>
+
+      <Clause heading="Changes">
+        <p>
+          If this policy changes in a way that affects what is collected or how long it is kept, the
+          date at the top changes and the previous behaviour stops applying only going forward. See
+          also the <Link className="text-gold" href="/terms">Terms of Service</Link>.
+        </p>
+      </Clause>
+    </LegalShell>
+  );
+}

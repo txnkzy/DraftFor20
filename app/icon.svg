@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="DraftFor20">
+  <rect width="64" height="64" rx="12" fill="#14161C"/>
+  <rect x="6" y="6" width="52" height="52" rx="8" fill="none" stroke="#1D2029" stroke-width="2"/>
+  <path d="M10 46h44" stroke="#FF5A36" stroke-width="4" stroke-linecap="square"/>
+  <text x="32" y="38" text-anchor="middle"
+        font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+        font-size="30" font-weight="800" letter-spacing="-1.5" fill="#F5B942">20</text>
+</svg>

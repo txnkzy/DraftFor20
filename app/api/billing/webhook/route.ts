@@ -1,0 +1,160 @@
+import type Stripe from "stripe";
+import { NextResponse } from "next/server";
+import { billingStatus, getStripe, stripeEnv } from "@/lib/billing/stripe";
+import { applyBilling, logBillingFailure, revokeBilling } from "@/lib/billing/db";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+/**
+ * Stripe's webhook. THE ONLY THING THAT GRANTS PREMIUM.
+ *
+ * Nothing the browser says about a payment is believed: the success page can
+ * be opened by anyone with the URL, and the checkout call happens before any
+ * money moves. Access is written here, from a signed event, or by an admin by
+ * hand. There is no third path.
+ *
+ * Unconfigured, this answers 503 with a sentence. It never throws, and no
+ * other part of the site depends on it existing.
+ */
+
+/** Stripe moved the period end onto the subscription item in 2025. Read both
+ *  so this keeps working across a version bump rather than silently granting
+ *  nothing. */
+function periodEnd(sub: Stripe.Subscription): Date | null {
+  const legacy = (sub as unknown as { current_period_end?: number }).current_period_end;
+  const item = sub.items?.data?.[0] as unknown as { current_period_end?: number } | undefined;
+  const secs = legacy ?? item?.current_period_end;
+  return typeof secs === "number" ? new Date(secs * 1000) : null;
+}
+
+const DEAD = new Set(["canceled", "incomplete_expired", "unpaid"]);
+
+export async function POST(req: Request) {
+  const status = billingStatus();
+  const stripe = getStripe();
+  if (!stripe || !status.webhookReady) {
+    return new Response("Stripe webhook is not configured.", { status: 503 });
+  }
+
+  const signature = req.headers.get("stripe-signature");
+  if (!signature) return new Response("No signature.", { status: 400 });
+
+  const raw = await req.text();
+  let event: Stripe.Event;
+  try {
+    event = stripe.webhooks.constructEvent(raw, signature, stripeEnv().webhookSecret);
+  } catch (err) {
+    // an unverifiable event is not an event
+    console.error("stripe signature check failed", (err as Error)?.message);
+    return new Response("Bad signature.", { status: 400 });
+  }
+
+  try {
+    switch (event.type) {
+      case "checkout.session.completed": {
+        const s = event.data.object as Stripe.Checkout.Session;
+        const userId = s.metadata?.user_id ?? s.client_reference_id ?? null;
+        const customerId = typeof s.customer === "string" ? s.customer : null;
+
+        if (s.mode === "payment") {
+          // the Game Night Pass: 24 hours, added to whatever is already there
+          await applyBilling({
+            eventId: event.id,
+            userId,
+            customerId,
+            status: "pass",
+            source: "game_night_pass",
+            extendHours: 24,
+          });
+          break;
+        }
+
+        const subId = typeof s.subscription === "string" ? s.subscription : null;
+        const sub = subId ? await stripe.subscriptions.retrieve(subId) : null;
+        await applyBilling({
+          eventId: event.id,
+          userId,
+          customerId,
+          subscriptionId: subId,
+          status: sub?.status ?? "active",
+          premiumUntil: sub ? periodEnd(sub) : null,
+          source: "stripe_subscription",
+        });
+        break;
+      }
+
+      case "customer.subscription.created":
+      case "customer.subscription.updated": {
+        const sub = event.data.object as Stripe.Subscription;
+        const customerId = typeof sub.customer === "string" ? sub.customer : null;
+
+        if (DEAD.has(sub.status) && customerId) {
+          await revokeBilling(event.id, customerId, sub.status);
+          break;
+        }
+        // past_due keeps the access it has already paid for while Stripe
+        // retries; the date on the profile is what decides, not the status
+        await applyBilling({
+          eventId: event.id,
+          userId: sub.metadata?.user_id ?? null,
+          customerId,
+          subscriptionId: sub.id,
+          status: sub.status,
+          premiumUntil: periodEnd(sub),
+          source: "stripe_subscription",
+        });
+        break;
+      }
+
+      case "customer.subscription.deleted": {
+        const sub = event.data.object as Stripe.Subscription;
+        const customerId = typeof sub.customer === "string" ? sub.customer : null;
+        if (customerId) await revokeBilling(event.id, customerId, "canceled");
+        break;
+      }
+
+      case "invoice.paid":
+      case "invoice.payment_succeeded": {
+        const inv = event.data.object as Stripe.Invoice;
+        const subId =
+          (inv as unknown as { subscription?: string | { id: string } }).subscription ?? null;
+        const id = typeof subId === "string" ? subId : subId?.id ?? null;
+        if (!id) break;
+        const sub = await stripe.subscriptions.retrieve(id);
+        await applyBilling({
+          eventId: event.id,
+          userId: sub.metadata?.user_id ?? null,
+          customerId: typeof sub.customer === "string" ? sub.customer : null,
+          subscriptionId: sub.id,
+          status: sub.status,
+          premiumUntil: periodEnd(sub),
+          source: "stripe_subscription",
+        });
+        break;
+      }
+
+      case "invoice.payment_failed": {
+        const inv = event.data.object as Stripe.Invoice;
+        const customerId = typeof inv.customer === "string" ? inv.customer : null;
+        if (customerId) {
+          // status only. They keep what they have paid for until it lapses.
+          await applyBilling({ eventId: event.id, customerId, status: "past_due" });
+        }
+        break;
+      }
+
+      default:
+        break;
+    }
+  } catch (err) {
+    // 500 makes Stripe retry, which is what we want for a transient failure.
+    // It is also written down, so the console can show it without anyone
+    // having to go digging through log drains.
+    console.error("stripe webhook handling failed", event.type, err);
+    await logBillingFailure(event.id, event.type, (err as Error)?.message ?? String(err));
+    return new Response("Handler failed.", { status: 500 });
+  }
+
+  return NextResponse.json({ received: true });
+}
