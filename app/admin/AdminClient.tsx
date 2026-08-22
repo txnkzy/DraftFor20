@@ -28,6 +28,9 @@ interface Row {
   id: string;
   email: string | null;
   display_name: string | null;
+  /** the public identifier; email stays admin-only */
+  handle: string | null;
+  is_admin: boolean;
   created_at: string;
   premium_until: string | null;
   premium_source: string | null;
@@ -321,14 +324,20 @@ function Admin() {
                   {sorted.map((r) => (
                     <tr key={r.id}>
                       <td className="border-b py-2.5 pr-3 rule">
-                        <span className="type-display block truncate text-[0.8125rem]">
-                          {r.display_name || r.email || r.id.slice(0, 8)}
+                        <span className="type-display flex items-baseline gap-1.5 truncate text-[0.8125rem]">
+                          {r.display_name || r.handle || r.id.slice(0, 8)}
+                          {r.is_admin ? (
+                            <span className="type-label shrink-0 text-teal">admin</span>
+                          ) : null}
                         </span>
-                        {r.display_name && r.email ? (
-                          <span className="block truncate text-[0.75rem] text-muted">
-                            {r.email}
-                          </span>
-                        ) : null}
+                        {/* the handle is the public identifier; the email is
+                            here because this page is admins-only and they are
+                            the one audience allowed to see it */}
+                        <span className="block truncate text-[0.75rem] text-muted">
+                          {r.handle ? `@${r.handle}` : ""}
+                          {r.handle && r.email ? " · " : ""}
+                          {r.email}
+                        </span>
                       </td>
                       <td className="type-num border-b py-2.5 pr-3 text-[0.75rem] text-muted rule">
                         {new Date(r.created_at).toLocaleDateString()}
@@ -380,6 +389,31 @@ function Admin() {
                           >
                             Revoke
                           </Button>
+                          {/* the server refuses this for non-admins and for
+                              the last remaining admin; the button only asks */}
+                          <Button
+                            variant={r.is_admin ? "calm" : "quiet"}
+                            size="sm"
+                            disabled={busy === r.id}
+                            title={
+                              r.is_admin
+                                ? "Remove admin access"
+                                : "Grant admin access to this account"
+                            }
+                            onClick={() => {
+                              const ok = window.confirm(
+                                r.is_admin
+                                  ? `Remove admin access from ${r.handle ?? r.email ?? "this account"}?`
+                                  : `Give ${r.handle ?? r.email ?? "this account"} full admin access?\n\nThey will be able to grant premium, moderate the library and manage other admins — including removing yours.`,
+                              );
+                              if (ok) void call(r.id, "admin_set_admin", {
+                                p_user_id: r.id,
+                                p_grant: !r.is_admin,
+                              });
+                            }}
+                          >
+                            {r.is_admin ? "Admin ✓" : "Make admin"}
+                          </Button>
                         </div>
                       </td>
                     </tr>
@@ -391,6 +425,9 @@ function Admin() {
               A grant writes the same <span className="type-num text-ink">premium_until</span> a
               subscription writes, so it unlocks exactly the same things. &ldquo;Last seat&rdquo;
               is the last time the account sat down in a room, not a live presence signal.
+              Admin changes are refused server-side for anyone who is not already an admin, the
+              last remaining admin cannot be removed, and every change is written to
+              <span className="type-num text-ink"> admin_audit</span> with who did it and when.
             </p>
           </section>
         ) : null}

@@ -3,10 +3,20 @@
  * The privacy policy and terms reference them. They are the only things in
  * the legal pages that depend on who is operating the service.
  */
-/** Public origin, used by the sitemap, robots and OG tags. Set this when you
- *  point a real domain at the deploy. */
+/**
+ * Public origin. Used by the sitemap, robots, OG tags, the export card's
+ * watermark and Stripe's return URLs.
+ *
+ * The apex 308-redirects to www at Cloudflare, so www IS the canonical origin
+ * and the fallback says so. Anything that has to match exactly — Supabase's
+ * redirect allowlist, Stripe's webhook endpoint — must use the www form or it
+ * will be handed a redirect it does not follow.
+ *
+ * NEXT_PUBLIC_ is inlined at BUILD time, so changing this on Vercel does
+ * nothing until the next deploy.
+ */
 export const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "https://draftfor20.app";
+  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "https://www.draftfor20.com";
 
 export const OPERATOR = "DraftFor20";
 export const CONTACT_EMAIL = "support@draftfor20.com";

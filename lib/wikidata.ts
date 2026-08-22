@@ -15,7 +15,7 @@
 
 const SEARCH = "https://www.wikidata.org/w/api.php";
 const SPARQL = "https://query.wikidata.org/sparql";
-const UA = "DraftFor20/1.0 (https://draftfor20.vercel.app; hello@draftfor20.app)";
+const UA = "DraftFor20/1.0 (https://www.draftfor20.com; support@draftfor20.com)";
 
 /** one candidate query is allowed to be slow; the whole step is not */
 const QUERY_TIMEOUT_MS = 12_000;

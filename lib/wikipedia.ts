@@ -11,7 +11,7 @@
  */
 
 const API = "https://en.wikipedia.org/w/api.php";
-const UA = "DraftFor20/1.0 (https://draftfor20.vercel.app; hello@draftfor20.app)";
+const UA = "DraftFor20/1.0 (https://www.draftfor20.com; support@draftfor20.com)";
 
 export interface WikiResult {
   title: string;

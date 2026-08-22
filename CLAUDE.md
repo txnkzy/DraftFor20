@@ -5,7 +5,7 @@ fixed bankroll across a flat roster of N picks, bidding against each other
 under a server-authoritative countdown. When the money runs out the app
 produces a vertical 1080×1920 results card.
 
-**Live:** https://draftfor20.vercel.app
+**Live:** https://www.draftfor20.com  (apex redirects to www; `draftfor20.vercel.app` still serves in parallel)
 **Supabase project ref:** `jwnlmvjzeodfmngnhadq`
 **Stack:** Next.js 16 (App Router) · React 19 · TypeScript · Tailwind v4 ·
 Supabase (Postgres + Realtime + Auth) · Vercel
@@ -71,6 +71,17 @@ Every mutating RPC does the same four things:
 
 A `turn_seq` optimistic check is the second guard: a bid built against a board
 that has since moved is rejected as `DF20_STALE`.
+
+**`NEXT_PUBLIC_*` is inlined at BUILD time.** Changing `NEXT_PUBLIC_SITE_URL`
+in the Vercel dashboard does nothing to a deployment that already exists — the
+old value is compiled into the bundle. It needs a redeploy, and the served
+JS is where to check which value actually shipped.
+
+**Admin is `profiles.is_admin`, with the old `df20_config.admin_user_ids` row
+still honoured.** `df20_is_admin()` accepts either, deliberately: if the 0028
+backfill ever missed, the operator would be locked out of the very panel that
+grants admin. Revoking clears both sources, because a uuid left in the config
+row silently re-grants on the next check.
 
 **RLS is deny-all with no anon policies on every game table.** Clients cannot
 read any table directly; the only read path is `df20_public_state()`, a
@@ -326,9 +337,11 @@ Framer Motion is imported **only** by the landing scroll sequence, via
   support phone Stripe prints on receipts is a field in their dashboard, not a
   constant here. Do not add one back — a number rendered by the site is a
   number someone expects an answer on. See `DEPLOY.md`.
-- **The site's canonical domain is unsettled.** `SITE_URL` falls back to
-  `draftfor20.app`, the deploy is `draftfor20.vercel.app`, and the support
-  address is on `draftfor20.com`. Pick one and make the other two follow.
+- **The canonical origin is `https://www.draftfor20.com`.** The apex
+  308-redirects to www at Cloudflare, so anything that must match EXACTLY —
+  Supabase's redirect allowlist, Stripe's webhook endpoint and return URLs —
+  has to use the www form or it is handed a redirect it will not follow.
+  Cloudflare proxies to Vercel; `x-vercel-id` is present on responses.
 - **Stripe has never run.** The framework is complete and the no-keys path is
   verified end to end, but no real checkout, webhook or subscription lifecycle
   has been exercised against Stripe. `periodEnd()` in the webhook reads the

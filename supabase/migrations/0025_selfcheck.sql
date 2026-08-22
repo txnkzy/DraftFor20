@@ -95,20 +95,28 @@ declare
     'public.admin_activity()',
     'public.admin_recent_events(integer)',
     'public.df20_log_billing_failure(text,text,text,text)',
-    'public.leave_room(text,uuid)'
+    'public.leave_room(text,uuid)',
+    -- v9: admin as a role, and the public handle
+    'public.df20_admin_count()',
+    'public.admin_set_admin(uuid,boolean)',
+    'public.admin_audit_log(integer)',
+    'public.df20_gen_handle()',
+    'public.set_my_handle(text)',
+    'public.my_handle()'
   ];
   v_tables text[] := array['rooms','players','room_deck','room_pool','roster_entries',
                            'lots','bid_events','votes','rate_limits','category_library',
                            'category_library_items','category_library_aliases',
                            'wikipedia_cache','wikipedia_cache_items','profiles','templates',
                            'df20_config','user_categories','user_category_items',
-                           'audience_votes','billing_events'];
+                           'audience_votes','billing_events','admin_audit'];
   v_columns text[] := array['profiles.premium_until','profiles.premium_source',
                             'profiles.subscription_status','profiles.stripe_customer_id',
                             'profiles.export_watermark','rooms.obs_token',
                             'rooms.content_mode','billing_events.status',
                             'rooms.abandoned_by','category_library.source',
-                            'wikipedia_cache.source'];
+                            'wikipedia_cache.source','profiles.is_admin',
+                            'profiles.handle'];
   t text; c text;
 begin
   foreach f in array v_required loop
