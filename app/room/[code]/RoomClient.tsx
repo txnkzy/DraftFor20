@@ -8,6 +8,7 @@ import { LotHistory } from "@/components/board/LotHistory";
 import { OfferCard } from "@/components/board/OfferCard";
 import { PlayerStrip } from "@/components/board/PlayerStrip";
 import { RosterColumn } from "@/components/board/RosterColumn";
+import { LeaveRoom } from "@/components/board/LeaveRoom";
 import { ResultsBoard } from "@/components/results/ResultsBoard";
 import { ContentPanel } from "@/components/content/ContentPanel";
 import { CreatorBoard } from "@/components/content/CreatorBoard";
@@ -139,10 +140,69 @@ function RoomLive({ code }: { code: string }) {
   const isHost = Boolean(me?.is_host);
   const creator = state.room.content_mode === "creator";
 
+  const opponentName =
+    (me ? state.players.find((p) => p.id !== me.id) : null)?.display_name ?? null;
+
+  /** one <LeaveRoom>, wired the same way wherever it is rendered */
+  const leaveButton = (
+    <LeaveRoom
+      seated={Boolean(me)}
+      live={state.room.status === "lobby" || state.room.status === "live"}
+      opponent={opponentName}
+      onLeave={actions.leave}
+    />
+  );
+
+  if (state.room.status === "abandoned") {
+    const who = state.players.find((p) => p.id === state.room.abandoned_by);
+    const iLeft = Boolean(me && who && me.id === who.id);
+    return (
+      <main className="mx-auto w-full max-w-3xl px-4 py-10">
+        <div className="border p-5 rule" style={{ borderColor: "var(--color-teal)" }}>
+          <p className="type-label text-teal">room closed</p>
+          <h1 className="type-display mt-1 text-[1.75rem]">
+            {iLeft
+              ? "You left this draft"
+              : who
+                ? `${who.display_name} left the draft`
+                : "This draft was abandoned"}
+          </h1>
+          <p className="mt-2 text-[0.9375rem] leading-relaxed text-muted">
+            Nobody is on the clock any more and this code has stopped working. There is no
+            winner — a draft that did not finish is not a result.
+          </p>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <Link href="/new" className="btn btn-primary h-12 px-5 text-[0.875rem]">
+              Start another room
+            </Link>
+            <Link href="/" className="btn btn-ghost h-12 px-5 text-[0.875rem]">
+              Home
+            </Link>
+          </div>
+        </div>
+
+        {/* where it got to, because people want to see the picks they paid for */}
+        <p className="type-label mt-8 text-muted">where it stood</p>
+        <div className="mt-2 grid grid-cols-2 gap-4 sm:gap-8">
+          {state.players.map((p) => (
+            <RosterColumn
+              key={p.id}
+              seat={p.seat}
+              name={p.display_name}
+              rosterSize={state.room.roster_size}
+              roster={rosterOf(state, p.id)}
+            />
+          ))}
+        </div>
+      </main>
+    );
+  }
+
   if (state.room.status === "lobby") {
     return (
       <Lobby state={state} me={me} code={code} onSeated={onSeated}
-             start={actions.start} pending={pending} error={error} refresh={refresh}>
+             start={actions.start} pending={pending} error={error} refresh={refresh}
+             leaveButton={leaveButton}>
         {/* The old Content tab only existed once a draft had started, which
             is the one moment a streamer does not need it. Waiting for the
             second player is exactly when you set up the scene. */}
@@ -291,6 +351,7 @@ function RoomLive({ code }: { code: string }) {
         isHost={isHost}
         premium={premium}
         onRecordMode={() => setRecording(true)}
+        leaveButton={leaveButton}
       >
         {error ? (
           <p className="anim-reject mb-3 border border-coral bg-coral/15 px-3 py-2 text-center text-[0.8125rem] text-ink">
@@ -306,7 +367,10 @@ function RoomLive({ code }: { code: string }) {
     <main className="mx-auto flex min-h-dvh w-full max-w-lg flex-col lg:max-w-6xl">
       <div className="sticky top-0 z-20 border-b bg-board px-4 rule">
         <div className="flex items-baseline justify-between gap-3 pt-3">
-          <h1 className="type-display truncate text-[0.875rem]">{state.room.title}</h1>
+          <div className="flex min-w-0 items-baseline gap-3">
+            {leaveButton}
+            <h1 className="type-display truncate text-[0.875rem]">{state.room.title}</h1>
+          </div>
           <div className="flex shrink-0 items-baseline gap-3">
             <button
               className="type-label text-muted hover:text-ink"
@@ -374,7 +438,7 @@ function RoomLive({ code }: { code: string }) {
 /* ── lobby ─────────────────────────────────────────────────────────────── */
 
 function Lobby({
-  state, me, code, onSeated, start, pending, error, refresh, children,
+  state, me, code, onSeated, start, pending, error, refresh, children, leaveButton,
 }: {
   state: RoomState;
   me: { id: string; is_host: boolean } | null;
@@ -385,6 +449,7 @@ function Lobby({
   error: string | null;
   refresh: () => void;
   children?: React.ReactNode;
+  leaveButton?: React.ReactNode;
 }) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -408,6 +473,7 @@ function Lobby({
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-6 px-4 py-10">
       <div>
+        {leaveButton ? <div className="mb-4">{leaveButton}</div> : null}
         <p className="type-label text-muted">room code</p>
         <div className="mt-1 flex items-center gap-3">
           <span className="type-num text-[2.5rem] leading-none tracking-[0.1em] text-coral">{code}</span>

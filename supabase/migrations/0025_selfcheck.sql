@@ -94,7 +94,8 @@ declare
     'public.admin_library_remove(uuid)',
     'public.admin_activity()',
     'public.admin_recent_events(integer)',
-    'public.df20_log_billing_failure(text,text,text,text)'
+    'public.df20_log_billing_failure(text,text,text,text)',
+    'public.leave_room(text,uuid)'
   ];
   v_tables text[] := array['rooms','players','room_deck','room_pool','roster_entries',
                            'lots','bid_events','votes','rate_limits','category_library',
@@ -105,7 +106,8 @@ declare
   v_columns text[] := array['profiles.premium_until','profiles.premium_source',
                             'profiles.subscription_status','profiles.stripe_customer_id',
                             'profiles.export_watermark','rooms.obs_token',
-                            'rooms.content_mode','billing_events.status'];
+                            'rooms.content_mode','billing_events.status',
+                            'rooms.abandoned_by'];
   t text; c text;
 begin
   foreach f in array v_required loop

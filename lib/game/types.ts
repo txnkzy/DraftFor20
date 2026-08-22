@@ -30,6 +30,9 @@ export interface Room {
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
+  /** set only when somebody left mid-draft; see leave_room in 0026 */
+  abandoned_by: string | null;
+  abandoned_at: string | null;
 }
 
 export interface Player {

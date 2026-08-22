@@ -33,6 +33,7 @@ export function CreatorBoard({
   isHost,
   premium,
   onRecordMode,
+  leaveButton,
   children,
 }: {
   state: RoomState;
@@ -43,6 +44,7 @@ export function CreatorBoard({
   isHost: boolean;
   premium: PremiumState;
   onRecordMode: () => void;
+  leaveButton?: ReactNode;
   children?: ReactNode;
 }) {
   return (
@@ -67,6 +69,7 @@ export function CreatorBoard({
 
       {/* EVERYTHING THAT IS NOT THE SHOT */}
       <aside className="w-full border-t px-4 py-4 rule lg:w-[23rem] lg:shrink-0 lg:overflow-y-auto lg:border-l lg:border-t-0">
+        {leaveButton ? <div className="mb-3">{leaveButton}</div> : null}
         <div className="flex items-baseline justify-between gap-3">
           <h1 className="type-display truncate text-[0.9375rem]">{state.room.title}</h1>
           <span className="type-num shrink-0 text-[0.6875rem] text-muted">{code}</span>

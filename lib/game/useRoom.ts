@@ -153,6 +153,8 @@ export function useRoom(code: string, seat: Seat | null) {
         }),
       vote: (winnerPlayerId: string) =>
         call("submit_vote", { p_token: token, p_winner_player_id: winnerPlayerId }),
+      /** ends the room for both people; see LeaveRoom for the confirmation */
+      leave: () => call("leave_room", { p_token: token }),
     }),
     [call, token],
   );
