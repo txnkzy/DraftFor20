@@ -37,7 +37,7 @@ declare
     'public.df20_match_category(text,integer)',
     'public.df20_fill_pool(uuid,text,uuid)',
     'public.df20_seed_category(text,text[])',
-    'public.df20_cache_wikipedia(text,text,text,text[])',
+    'public.df20_cache_wikipedia(text,text,text,text[],text,text)',
     'public.df20_looks_like_person(text)',
     'public.df20_person_oriented_category(text)',
     'public.list_free_categories()',
@@ -107,7 +107,8 @@ declare
                             'profiles.subscription_status','profiles.stripe_customer_id',
                             'profiles.export_watermark','rooms.obs_token',
                             'rooms.content_mode','billing_events.status',
-                            'rooms.abandoned_by'];
+                            'rooms.abandoned_by','category_library.source',
+                            'wikipedia_cache.source'];
   t text; c text;
 begin
   foreach f in array v_required loop
