@@ -183,6 +183,34 @@ To run all of it with no Supabase project, see
 
 ---
 
+## Working on this with someone else
+
+Two people share `main`, so the rule is **pull before you touch anything,
+push when you stop**. A Claude Code session on Logan's machine does both
+automatically via hooks in `~/.claude/hooks/`:
+
+| When | What runs |
+|---|---|
+| session start | `git pull --rebase --autostash` |
+| end of a turn | commit anything loose, then push **if the project typechecks** |
+
+The typecheck gate is the important half. Work is always committed locally so
+nothing is lost, but a tree with TypeScript errors stays on that machine
+rather than landing on the branch you are about to pull.
+
+If you are the other person, nothing is required of you — just pull often.
+`--rebase` keeps the history linear; if a rebase stops on a conflict, the
+session says so instead of pushing.
+
+### The one thing that will bite you
+
+`supabase/APPLY_V7.sql` is generated. Edit files in `supabase/migrations/`
+and run `./supabase/build-bundle.sh`; a hand-edit to the bundle is overwritten
+the next time anyone rebuilds it. Two people editing the same migration number
+is the merge conflict to avoid — take the next free number instead.
+
+---
+
 ## Premium, and how access is decided
 
 There is exactly **one** rule, in one place: an account has premium while
