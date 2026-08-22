@@ -191,12 +191,32 @@ automatically via hooks in `~/.claude/hooks/`:
 
 | When | What runs |
 |---|---|
-| session start | `git pull --rebase --autostash` |
-| end of a turn | commit anything loose, then push **if the project typechecks** |
+| session start | `git pull --rebase --autostash`, and report the last deploy |
+| end of a turn | commit anything loose → **`npm run build`** → push → deploy |
 
-The typecheck gate is the important half. Work is always committed locally so
-nothing is lost, but a tree with TypeScript errors stays on that machine
-rather than landing on the branch you are about to pull.
+The build gate is the important half. Work is always committed locally so
+nothing is lost, but a tree that does not build stays on that machine rather
+than landing on the branch you are about to pull — and, since a push now ships
+to production, rather than landing on the live site.
+
+It is a full `next build` rather than `tsc --noEmit` for a reason: a missing
+Suspense boundary around `useSearchParams`, a bad route export, a prerender
+failure — none of those are type errors, and all of them break the deployed
+site. The build takes about eight seconds and only runs when something
+actually changed.
+
+**Deploys run detached.** A Vercel build takes a couple of minutes and has no
+business holding up the end of a turn, so the hook fires it into the
+background and appends the result to `~/.claude/hooks/df20-deploy.log`. The
+next session opens by reading that log, which is how a failure that happened
+after everyone went home still gets noticed.
+
+### What is NOT automatic
+
+Pushes **from anyone else** do not deploy. Vercel's GitHub integration needs a
+Login Connection on the Vercel account — an OAuth click in the dashboard — and
+until that is done, only a Claude Code session on Logan's machine ships. If
+you push from elsewhere, the code is on `main` but not on the site.
 
 If you are the other person, nothing is required of you — just pull often.
 `--rebase` keeps the history linear; if a rebase stops on a conflict, the
