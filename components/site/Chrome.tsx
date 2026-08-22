@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CONTACT_EMAIL, SUPPORT_PHONE, SUPPORT_PHONE_HREF } from "@/lib/site";
 import { HeaderAccount } from "./HeaderAccount";
 
 export function Header({ thin = false }: { thin?: boolean }) {
@@ -37,6 +38,20 @@ export function Footer() {
         <Link href="/terms" className="text-[0.8125rem] text-muted hover:text-ink">
           Terms
         </Link>
+        <a
+          href={`mailto:${CONTACT_EMAIL}`}
+          className="text-[0.8125rem] text-muted hover:text-ink"
+        >
+          Support
+        </a>
+        {SUPPORT_PHONE ? (
+          <a
+            href={`tel:${SUPPORT_PHONE_HREF}`}
+            className="type-num text-[0.8125rem] text-muted hover:text-ink"
+          >
+            {SUPPORT_PHONE}
+          </a>
+        ) : null}
         <span className="ml-auto text-[0.75rem] text-muted/70">
           Play money. No wagering, no payouts.
         </span>

@@ -56,9 +56,41 @@ Open the URL on your phone with wifi off. If the landing page loads and
 
 ## Before you share it widely
 
-Set the three constants in `lib/site.ts` — operator name, contact email and
-governing-law jurisdiction. The privacy policy and terms reference them and
-currently say `hello@draftfor20.app`, which is not a real inbox.
+Set the constants in `lib/site.ts` — operator name, contact email, support
+phone and governing-law jurisdiction. The privacy policy, terms and the footer
+reference them.
+
+`CONTACT_EMAIL` is `support@draftfor20.com`. **Create that mailbox before you
+share the site**, or the legal pages point at an address that bounces. Two ways:
+
+- **Forwarding only, free.** At your DNS host add an MX record for
+  `draftfor20.com` pointing at a forwarder (Cloudflare Email Routing, or
+  ImprovMX) and route `support@` to your personal inbox. You can read but
+  replies come from your personal address.
+- **A real mailbox, ~$6/user/month.** Google Workspace or Fastmail. Adds MX,
+  SPF, DKIM and DMARC records, and you can reply as `support@`.
+
+Either way add SPF and DMARC, otherwise anything you send lands in spam.
+
+`SUPPORT_PHONE` is empty, and while it is empty no phone number renders
+anywhere. Fill it in only once a number actually rings somewhere — see the
+VOIP note below.
+
+## A support phone number
+
+Buy a VOIP line and put it in `SUPPORT_PHONE` as you want it displayed
+(`+1 (555) 010-4477`); the `tel:` href is derived from it automatically.
+
+| Option | Cost | Good for |
+|---|---|---|
+| Google Voice (personal) | free, US only | one number forwarded to your cell |
+| Google Voice for Workspace | ~$10/user/mo | pairs with the Workspace mailbox |
+| Twilio | ~$1.15/mo + usage | a number you route in code |
+| OpenPhone / Grasshopper | ~$15–29/mo | shared inbox, hours, voicemail |
+
+For a two-player side project, forwarding to your own cell is the honest
+choice. Do not publish a number that goes to a voicemail nobody empties — no
+number is better than a dead one, which is why the constant defaults to empty.
 
 ## Sharing a room
 

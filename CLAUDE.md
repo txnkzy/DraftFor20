@@ -317,8 +317,15 @@ Framer Motion is imported **only** by the landing scroll sequence, via
 - **The signed-in gated path is unproven end to end.** Rejection cases are
   verified; a real authenticated success is not, because email confirmation
   blocked creating a test account.
-- **`lib/site.ts`** still has placeholder operator name, contact email and
-  jurisdiction. The privacy policy and terms reference them.
+- **`lib/site.ts`** contact email is `support@draftfor20.com`, but **that
+  mailbox does not exist yet** — no MX record has been created for
+  `draftfor20.com`, and mail to it bounces. `SUPPORT_PHONE` is deliberately
+  empty, which hides every phone affordance. Operator name and jurisdiction
+  are still placeholders. The privacy policy, terms and footer reference all
+  of these. Setup steps are in `DEPLOY.md`.
+- **The site's canonical domain is unsettled.** `SITE_URL` falls back to
+  `draftfor20.app`, the deploy is `draftfor20.vercel.app`, and the support
+  address is on `draftfor20.com`. Pick one and make the other two follow.
 - **Stripe has never run.** The framework is complete and the no-keys path is
   verified end to end, but no real checkout, webhook or subscription lifecycle
   has been exercised against Stripe. `periodEnd()` in the webhook reads the
