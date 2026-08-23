@@ -191,8 +191,8 @@ automatically via hooks in `~/.claude/hooks/`:
 
 | When | What runs |
 |---|---|
-| session start | `git pull --rebase --autostash`, and report the last deploy |
-| end of a turn | commit anything loose → **`npm run build`** → push → deploy |
+| session start | `git pull --rebase --autostash`, and report the live deploy |
+| end of a turn | commit anything loose → **`npm run build`** → push |
 
 The build gate is the important half. Work is always committed locally so
 nothing is lost, but a tree that does not build stays on that machine rather
@@ -202,25 +202,27 @@ to production, rather than landing on the live site.
 It is a full `next build` rather than `tsc --noEmit` for a reason: a missing
 Suspense boundary around `useSearchParams`, a bad route export, a prerender
 failure — none of those are type errors, and all of them break the deployed
-site. The build takes about eight seconds and only runs when something
-actually changed.
+site. It takes about eight seconds and only runs when something changed.
 
-**Deploys run detached.** A Vercel build takes a couple of minutes and has no
-business holding up the end of a turn, so the hook fires it into the
-background and appends the result to `~/.claude/hooks/df20-deploy.log`. The
-next session opens by reading that log, which is how a failure that happened
-after everyone went home still gets noticed.
+### Deploys
 
-### What is NOT automatic
+**The Vercel project is connected to this repo, so pushing is deploying.**
+Every push to `main` — from either of us, from any machine — builds and goes
+live on www.draftfor20.com. There is no separate deploy step and nothing to
+remember.
 
-Pushes **from anyone else** do not deploy. Vercel's GitHub integration needs a
-Login Connection on the Vercel account — an OAuth click in the dashboard — and
-until that is done, only a Claude Code session on Logan's machine ships. If
-you push from elsewhere, the code is on `main` but not on the site.
+The session-start hook reports the latest production deployment straight from
+Vercel, so a session opens knowing what is actually live, including anything
+the other person shipped overnight.
 
-If you are the other person, nothing is required of you — just pull often.
-`--rebase` keeps the history linear; if a rebase stops on a conflict, the
-session says so instead of pushing.
+If you need the state by hand:
+
+```bash
+npx vercel ls --prod
+```
+
+Note that the readable table is on **stderr** — stdout carries bare URLs. Pipe
+with `2>&1` or you will parse nothing.
 
 ### The one thing that will bite you
 
