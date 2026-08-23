@@ -11,7 +11,7 @@ FILES=(
   0015_signin_gate 0016_email_verified
   0017_profiles 0018_content 0019_billing 0020_selfcheck
   0021_timer 0022_scouting 0023_content_mode 0024_admin 0025_selfcheck
-  0026_leave 0027_provenance 0028_admin_roles 0029_handles 0030_verify_gates
+  0026_leave 0027_provenance 0028_admin_roles 0029_handles 0030_verify_gates 0031_lock_handle
 )
 
 {

@@ -243,6 +243,9 @@ function Profile() {
           <Link href="/new" className="btn btn-primary h-12 px-5 text-[0.875rem]">
             Start a room
           </Link>
+          <Link href="/profile/billing" className="btn btn-ghost h-12 px-5 text-[0.875rem]">
+            Billing
+          </Link>
           <Link href="/host" className="btn btn-ghost h-12 px-5 text-[0.875rem]">
             Host settings
           </Link>

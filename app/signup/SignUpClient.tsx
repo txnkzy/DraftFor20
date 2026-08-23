@@ -6,7 +6,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Field, TextInput } from "@/components/ui/Field";
 import { Footer, Header, SetupNotice } from "@/components/site/Chrome";
-import { passwordProblem, signUpWithPassword } from "@/lib/auth";
+import { passwordProblem, safeNext, signUpWithPassword } from "@/lib/auth";
 import { supabaseConfigured } from "@/lib/supabase/client";
 
 export function SignUpClient() {
@@ -22,11 +22,12 @@ function SignUp() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+  const [taken, setTaken] = useState(false);
 
   const next =
     typeof window === "undefined"
-      ? "/host"
-      : new URLSearchParams(window.location.search).get("next") || "/host";
+      ? "/"
+      : safeNext(new URLSearchParams(window.location.search).get("next"));
 
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
   const mismatch = confirm.length > 0 && confirm !== password;
@@ -47,6 +48,10 @@ function SignUp() {
     // password goes straight to Supabase Auth; nothing here keeps it
     const res = await signUpWithPassword(email, password, next);
     setBusy(false);
+    if (res.alreadyRegistered) {
+      setTaken(true);
+      return;
+    }
     if (!res.ok) {
       setError(res.message ?? "Could not create the account.");
       return;
@@ -100,7 +105,7 @@ function SignUp() {
               value={email}
               autoComplete="email"
               placeholder="you@example.com"
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => { setEmail(e.target.value); setTaken(false); }}
             />
           </Field>
 
@@ -130,6 +135,25 @@ function SignUp() {
           {mismatch ? (
             <p className="text-[0.8125rem] text-coral">Those two don&apos;t match yet.</p>
           ) : null}
+          {taken ? (
+            <div className="border border-teal p-3">
+              <p className="type-label text-teal">that email already has an account</p>
+              <p className="mt-1.5 text-[0.875rem] leading-relaxed text-muted">
+                One account per address. Sign in instead, or use{" "}
+                <Link className="text-ink underline" href="/login?reset=1">
+                  forgotten password
+                </Link>{" "}
+                if you cannot get in.
+              </p>
+              <Link
+                href={`/login?next=${encodeURIComponent(next)}`}
+                className="btn btn-primary mt-3 h-11 px-4 text-[0.8125rem]"
+              >
+                Sign in as {email.trim()}
+              </Link>
+            </div>
+          ) : null}
+
           {error ? <p className="text-[0.875rem] text-coral">{error}</p> : null}
 
           <Button variant="primary" size="lg" disabled={!ready} onClick={() => void submit()}>
