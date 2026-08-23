@@ -8,6 +8,17 @@ values ('11111111-1111-1111-1111-111111111111', 'host@example.com', now())
   on conflict (id) do update set email_confirmed_at = now();
 set request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
 
+-- The setup-link and typed-category paths became premium in 0033. This suite
+-- exercises category mechanics, not the paywall — v11_premium_line owns that —
+-- so the test host is given a plan rather than rewriting every assertion
+-- around a gate it is not trying to test.
+insert into public.profiles (id, email)
+values ('11111111-1111-1111-1111-111111111111', 'host@example.com')
+on conflict (id) do nothing;
+update public.profiles
+   set premium_until = now() + interval '1 day', premium_source = 'admin_grant'
+ where id = '11111111-1111-1111-1111-111111111111';
+
 do $t$
 declare
   v jsonb; v_room uuid; v_setup uuid; v_code text; v_res uuid;
@@ -224,6 +235,11 @@ set request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
 do $v$
 begin
   perform public.create_pending_room();
-  raise notice 'PASS  confirmed account can mint a setup link';
+  raise notice 'PASS  confirmed premium account can mint a setup link';
 end $v$;
 set request.jwt.claim.sub = '';
+
+-- the suite borrowed a plan; give it back
+update public.profiles
+   set premium_until = null, premium_source = null
+ where id = '11111111-1111-1111-1111-111111111111';

@@ -14,6 +14,7 @@ import { accessToken, signInHref, signUpHref, useHost } from "@/lib/auth";
 import { usePremium } from "@/lib/premium";
 import { Padlock } from "@/components/premium/Padlock";
 import { UpgradeCard } from "@/components/premium/UpgradeCard";
+import { UpgradeDialog, useUpgradeDialog } from "@/components/premium/UpgradeDialog";
 import { centsToInput, formatCents, parseDollarsToCents } from "@/lib/money";
 import { supabaseBrowser, supabaseConfigured } from "@/lib/supabase/client";
 
@@ -66,6 +67,8 @@ function NewRoom() {
   const { user } = useHost();
   const signedIn = Boolean(user);
   const premium = usePremium();
+  const premiumActive = premium.active;
+  const upgrade = useUpgradeDialog();
   const [saved, setSaved] = useState<Saved[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -262,16 +265,36 @@ function NewRoom() {
               ["handoff", "Someone else builds it", "Send a setup link to a third person. Neither player sees the list.", true],
               ["deck", "One of your saved decks", "A category you kept from an earlier draft. Reshuffled, still hidden.", true],
             ] as const
-          ).map(([m, label, blurb, premium]) => (
+          ).map(([m, label, blurb, premium_]) => (
             <button
               key={m}
-              onClick={() => { setMode(m); setMatch(null); setNoMatch(false); }}
+              onClick={() => {
+                // free is the shelf; the other three are premium and say so
+                if (m !== "free" && !premium.active) {
+                  upgrade.ask(
+                    m === "auto"
+                      ? "Type your own category"
+                      : m === "handoff"
+                        ? "Have someone else build the list"
+                        : "Reuse a saved deck",
+                    m === "auto"
+                      ? "Name any category and we find the list for you — neither player ever sees it."
+                      : m === "handoff"
+                        ? "Send a setup link to a third person so neither player knows what is coming."
+                        : "Deal again from a category you kept, reshuffled and still hidden.",
+                  );
+                  return;
+                }
+                setMode(m); setMatch(null); setNoMatch(false);
+              }}
               className={`border p-3 text-left ${mode === m ? "border-coral" : "rule hover:border-ink"}`}
             >
               <span className="flex items-baseline gap-2">
                 <span className={`type-label ${mode === m ? "text-coral" : "text-ink"}`}>{label}</span>
-                {premium && !signedIn ? (
-                  <span className="type-label text-teal">account needed</span>
+                {premium_ && !premiumActive ? (
+                  <span className="type-label flex items-center gap-1 text-muted">
+                    <Padlock size={11} /> premium
+                  </span>
                 ) : null}
               </span>
               <span className="mt-1 block text-[0.8125rem] leading-snug text-muted">{blurb}</span>
@@ -705,6 +728,15 @@ function NewRoom() {
           </Button>
         </div>
       </main>
+      {upgrade.open ? (
+        <UpgradeDialog
+          feature={upgrade.open.feature}
+          why={upgrade.open.why}
+          signedIn={premium.signedIn}
+          returnTo="/new"
+          onClose={upgrade.close}
+        />
+      ) : null}
       <Footer />
     </>
   );
