@@ -22,7 +22,13 @@ export function HeaderAccount() {
         <Link href={signInHref(next)} className="type-label text-muted hover:text-ink">
           Sign in
         </Link>
-        <Link href={signUpHref(next)} className="type-label text-muted hover:text-ink">
+        {/* Adding Pricing made the nav five items, which wraps at 375px. The
+            login page links straight to signup, so one auth link is enough on
+            the narrowest phones and nothing becomes unreachable. */}
+        <Link
+          href={signUpHref(next)}
+          className="type-label hidden text-muted hover:text-ink sm:inline"
+        >
           Sign up
         </Link>
       </span>

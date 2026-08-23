@@ -13,7 +13,7 @@ export function Header({ thin = false }: { thin?: boolean }) {
         <Link href="/" className="type-display text-[0.9375rem] tracking-tight">
           Draft<span className="text-gold">For20</span>
         </Link>
-        <nav className="flex items-center gap-4">
+        <nav className="flex items-center gap-3 sm:gap-4">
           <Link href="/join" className="type-label text-muted hover:text-ink">
             Join
           </Link>
