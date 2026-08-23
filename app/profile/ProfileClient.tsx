@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Footer, Header, SetupNotice } from "@/components/site/Chrome";
@@ -8,7 +9,7 @@ import { BillingPanel } from "@/components/premium/BillingPanel";
 import { BADGES } from "@/lib/badges";
 import { ScoutingReport, type ScoutReport } from "@/components/profile/ScoutingReport";
 import { HandleRow } from "@/components/profile/HandleRow";
-import { signInHref } from "@/lib/auth";
+import { signInHref, signOut } from "@/lib/auth";
 import { supabaseBrowser, supabaseConfigured } from "@/lib/supabase/client";
 
 interface Stats {
@@ -245,10 +246,43 @@ function Profile() {
           <Link href="/host" className="btn btn-ghost h-12 px-5 text-[0.875rem]">
             Host settings
           </Link>
+          <SignOutButton />
         </div>
       </main>
       <Footer />
     </>
+  );
+}
+
+/**
+ * Signing out lived only on /host, which nothing has linked to since the
+ * header started pointing at this page — so there was no way out of an
+ * account without clearing cookies by hand.
+ *
+ * router.refresh() after the sign-out matters: without it the server
+ * components keep rendering the session that no longer exists.
+ */
+function SignOutButton() {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <Button
+      variant="quiet"
+      className="h-12 px-5 text-[0.875rem]"
+      disabled={busy}
+      onClick={() => {
+        setBusy(true);
+        void signOut()
+          .then(() => {
+            router.push("/");
+            router.refresh();
+          })
+          .catch(() => setBusy(false));
+      }}
+    >
+      {busy ? "Signing out" : "Sign out"}
+    </Button>
   );
 }
 
