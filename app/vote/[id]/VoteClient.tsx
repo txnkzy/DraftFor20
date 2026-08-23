@@ -23,7 +23,7 @@ interface VotePlayer {
   rows: Row[];
 }
 interface VoteState {
-  status: "open" | "gone" | "not_finished" | "unconfigured" | "locked";
+  status: "open" | "gone" | "not_finished" | "unconfigured";
   room_id?: string;
   code?: string;
   title?: string;
@@ -113,16 +113,12 @@ export function VoteClient({ roomRef }: { roomRef: string }) {
           <h1 className="type-display text-[1.75rem]">
             {s.status === "not_finished"
               ? "This draft isn't finished"
-              : s.status === "locked"
-                ? "Voting isn't open on this draft"
-                : `Nothing to judge at ${s.code ?? roomRef}`}
+              : `Nothing to judge at ${s.code ?? roomRef}`}
           </h1>
           <p className="mt-2 text-[0.9375rem] leading-relaxed text-muted">
             {s.status === "not_finished"
               ? "Come back when both rosters are full."
-              : s.status === "locked"
-                ? "The host hasn't unlocked the audience vote for this one. The draft is real — you just can't weigh in on it."
-                : "That link doesn't match a finished draft."}
+              : "That link doesn't match a finished draft."}
           </p>
           <Link href="/new" className="btn btn-primary mt-6 h-12 px-5 text-[0.875rem]">
             Start a free room

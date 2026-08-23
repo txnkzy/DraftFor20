@@ -126,7 +126,9 @@ export const PREMIUM_GATES = {
   obsLink: true,
   exportCustomisation: true,
   customCategories: true,
-  audienceVote: true,
+  /** the public vote link is free — it is the acquisition loop. Only the
+   *  host's live tally in the Content tab is premium. */
+  audienceVote: false,
 } as const;
 
 export const PLANS = {

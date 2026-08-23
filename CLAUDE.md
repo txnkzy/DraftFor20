@@ -132,12 +132,12 @@ on it.
 | Surface | Gate |
 |---|---|
 | Content Creator rooms | premium, chosen at creation and never changed |
-| Record mode, OBS link, live tally | premium |
+| Record mode, OBS link, the host's live tally | premium |
 | OBS token minting | premium, **checked in the RPC**, not the UI |
 | Scouting report beyond the last 5 drafts | premium, windowed in the RPC |
 | Export card branding | premium, and opt-out only (see below) |
-| Custom categories | still sign-in, not premium — `PREMIUM_GATES` in `lib/premium.ts` |
-| Audience vote link | free, deliberately: it is the acquisition loop |
+| Any host-supplied category (typed, handed off, saved deck) | premium since 0033 — free is the premade shelf |
+| Public audience vote link | **free, deliberately: it is the acquisition loop.** 0033 gated it, 0034 put it back |
 
 **The watermark is opt-out, and that is a product decision, not an oversight.**
 `df20_export_style(code)` resolves it server-side from the room's host profile.

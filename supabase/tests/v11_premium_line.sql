@@ -62,9 +62,13 @@ begin
   assert v->>'setup_token' is not null, 'premium can mint a setup link';
   raise notice 'PASS  a premium account can';
 
-  -- ── the audience vote follows the HOST's premium ────────────────────────
-  -- a completed room hosted by the FREE account
+  -- ── the audience vote is FREE, including for a free host ───────────────
+  -- 0033 briefly gated this and 0034 put it back: the vote link is how
+  -- somebody with no prior contact meets the product, so it must work on a
+  -- draft hosted by an account that has never paid anything.
   perform set_config('request.jwt.claim.sub', FREE::text, true);
+  update public.profiles set premium_until = null, premium_source = null where id = FREE;
+
   v := public.create_room('V11 Shelf', 1, 2000, 100, 300, 'Free', true, 0,
                           null, null, 'library', v_lib);
   v_code := v->>'code'; v_ht := (v->>'session_token')::uuid;
@@ -86,28 +90,21 @@ begin
     end if;
   end loop;
 
-  v := public.get_audience_state(v_code, 'voter-freehostaaaaaaa');
-  assert v->>'status' = 'locked',
-    'a free host''s draft must report the vote as locked, got: ' || (v->>'status');
-  assert v->'players' is null, 'a locked vote page must not ship the rosters';
+  assert not public.df20_premium_active(FREE), 'fixture: the host really is on the free plan';
 
-  v_err := null;
-  begin perform public.cast_audience_vote(v_code, 'voter-freehostaaaaaaa',
-    (select id from public.players where room_id = v_rid limit 1));
-  exception when others then v_err := sqlerrm; end;
-  assert v_err like '%DF20_PREMIUM_REQUIRED%',
-    'voting on a free host''s draft must be refused, got: ' || coalesce(v_err,'allowed');
-  raise notice 'PASS  the audience vote is locked when the host is on the free plan';
+  -- a total stranger, no account, no plan, nobody signed in
+  perform set_config('request.jwt.claim.sub', '', true);
+  v := public.get_audience_state(v_code, 'voter-strangeraaaaaaa');
+  assert v->>'status' = 'open',
+    'a free host''s draft must still accept votes, got: ' || (v->>'status');
+  assert jsonb_array_length(v->'players') = 2, 'and must show both rosters';
+  assert v->'tally' = 'null'::jsonb, 'still blind until they vote';
 
-  -- the same room, once the host pays
-  update public.profiles set premium_until = now() + interval '30 days',
-                             premium_source = 'admin_grant' where id = FREE;
-  v := public.get_audience_state(v_code, 'voter-freehostaaaaaaa');
-  assert v->>'status' = 'open', 'the same draft opens once the host has premium';
-  v := public.cast_audience_vote(v_code, 'voter-freehostaaaaaaa',
+  v := public.cast_audience_vote(v_code, 'voter-strangeraaaaaaa',
     (select id from public.players where room_id = v_rid order by seat limit 1));
-  assert (v->'tally'->>'total')::int = 1, 'and a stranger can then vote without any account';
-  raise notice 'PASS  the same link opens the moment the host upgrades, and voters stay anonymous';
+  assert (v->'tally'->>'total')::int = 1,
+    'a stranger with no account can vote on a free host''s draft';
+  raise notice 'PASS  the audience vote is free — free host, anonymous voter, no plan anywhere';
 
   -- ── cleanup ─────────────────────────────────────────────────────────────
   perform set_config('request.jwt.claim.sub', '', true);
