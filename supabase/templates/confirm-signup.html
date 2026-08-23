@@ -1,0 +1,117 @@
+<!--
+  DraftFor20 · Supabase Auth → Email Templates → "Confirm signup"
+
+  Paste the whole thing into the template body. Subject line is set separately
+  in the same screen; "Confirm your DraftFor20 account" reads well.
+
+  Written for email clients, not browsers, which is why it looks nothing like
+  the rest of this codebase:
+    · tables, because Outlook renders through Word and ignores flex and grid
+    · every style inlined, because Gmail strips <style> in several contexts
+    · a system font stack, because Bricolage and Instrument Sans will not load
+      and a webfont that fails silently is worse than one never asked for
+    · the button is a table cell with bgcolor, not a padded <a>, because
+      Outlook drops padding on inline elements
+
+  Palette matches app/globals.css: board #14161C, surface #1D2029,
+  coral #FF5A36 (the act), gold #F5B942 (money), ink #E8E6E1, muted #9C978E.
+-->
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+  Confirm your address and your DraftFor20 account is ready.
+</div>
+
+<table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%"
+       style="background-color:#14161C;margin:0;padding:32px 12px;">
+  <tr>
+    <td align="center">
+
+      <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%"
+             style="max-width:560px;width:100%;">
+
+        <!-- wordmark -->
+        <tr>
+          <td style="padding:0 0 26px 4px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+                     font-size:19px;font-weight:800;letter-spacing:-0.02em;color:#E8E6E1;">
+            Draft<span style="color:#F5B942;">For20</span>
+          </td>
+        </tr>
+
+        <!-- the card -->
+        <tr>
+          <td style="background-color:#1D2029;border:1px solid #2E323C;border-radius:6px;
+                     padding:34px 32px;">
+
+            <p style="margin:0 0 10px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+                      font-size:11px;font-weight:700;letter-spacing:0.11em;text-transform:uppercase;
+                      color:#9C978E;">
+              One last step
+            </p>
+
+            <h1 style="margin:0 0 14px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+                       font-size:26px;line-height:1.15;font-weight:800;letter-spacing:-0.02em;
+                       color:#E8E6E1;">
+              Confirm your email address
+            </h1>
+
+            <p style="margin:0 0 26px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+                      font-size:15px;line-height:1.6;color:#9C978E;">
+              Confirm <span style="color:#E8E6E1;">{{ .Email }}</span> and your account is ready.
+              You only ever have to do this once.
+            </p>
+
+            <!-- the act. Coral is the button colour in this palette and nothing else. -->
+            <table role="presentation" border="0" cellpadding="0" cellspacing="0">
+              <tr>
+                <td bgcolor="#FF5A36" style="border-radius:3px;">
+                  <a href="{{ .ConfirmationURL }}"
+                     style="display:inline-block;padding:15px 30px;
+                            font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+                            font-size:14px;font-weight:800;letter-spacing:0.05em;
+                            text-transform:uppercase;text-decoration:none;color:#14161C;">
+                    Confirm email address
+                  </a>
+                </td>
+              </tr>
+            </table>
+
+            <p style="margin:26px 0 8px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+                      font-size:13px;line-height:1.6;color:#9C978E;">
+              Button not working? Paste this into your browser:
+            </p>
+            <p style="margin:0;font-family:'Courier New',Courier,monospace;font-size:12px;
+                      line-height:1.5;word-break:break-all;color:#2DD4BF;">
+              {{ .ConfirmationURL }}
+            </p>
+
+            <div style="height:1px;line-height:1px;font-size:0;background-color:#2E323C;
+                        margin:28px 0 20px;">&nbsp;</div>
+
+            <p style="margin:0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+                      font-size:13px;line-height:1.6;color:#9C978E;">
+              Didn't sign up? Ignore this email and nothing happens &mdash; the account is not
+              created until this link is opened.
+            </p>
+          </td>
+        </tr>
+
+        <!-- footer -->
+        <tr>
+          <td style="padding:22px 4px 0;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+                     font-size:12px;line-height:1.6;color:#75726C;">
+            DraftFor20 &middot; two players, one bankroll, no algorithm.<br />
+            <a href="https://www.draftfor20.com" style="color:#9C978E;text-decoration:underline;">
+              www.draftfor20.com
+            </a>
+            &nbsp;&middot;&nbsp;
+            <a href="mailto:support@draftfor20.com" style="color:#9C978E;text-decoration:underline;">
+              support@draftfor20.com
+            </a>
+            <br /><br />
+            Play money. No wagering, no payouts.
+          </td>
+        </tr>
+
+      </table>
+    </td>
+  </tr>
+</table>
