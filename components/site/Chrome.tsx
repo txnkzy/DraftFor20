@@ -17,6 +17,9 @@ export function Header({ thin = false }: { thin?: boolean }) {
           <Link href="/join" className="type-label text-muted hover:text-ink">
             Join
           </Link>
+          <Link href="/pricing" className="type-label text-muted hover:text-ink">
+            Pricing
+          </Link>
           <HeaderAccount />
           <Link href="/new" className="type-label text-gold hover:text-ink">
             Start a room

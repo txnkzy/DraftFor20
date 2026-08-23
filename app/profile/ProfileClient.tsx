@@ -7,6 +7,7 @@ import { Footer, Header, SetupNotice } from "@/components/site/Chrome";
 import { BillingPanel } from "@/components/premium/BillingPanel";
 import { BADGES } from "@/lib/badges";
 import { ScoutingReport, type ScoutReport } from "@/components/profile/ScoutingReport";
+import { HandleRow } from "@/components/profile/HandleRow";
 import { signInHref } from "@/lib/auth";
 import { supabaseBrowser, supabaseConfigured } from "@/lib/supabase/client";
 
@@ -135,7 +136,7 @@ function Profile() {
             <h1 className="type-display text-[1.75rem]">
               {stats.display_name || "Your profile"}
             </h1>
-            <p className="type-num mt-1 text-[0.8125rem] text-muted">{stats.email}</p>
+            <HandleRow email={stats.email} />
           </div>
         </div>
 

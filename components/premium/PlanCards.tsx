@@ -122,12 +122,13 @@ export function PlanCards({
           const p = cfg?.plans[id];
           const live = Boolean(cfg?.configured && p?.available);
           return (
-            <section
-              key={id}
-              className="flex flex-col border p-5 rule"
-              style={id === "premium" ? { borderColor: "var(--color-coral)" } : undefined}
-            >
-              <h2 className="type-display text-[1.25rem]">{c.title}</h2>
+            <section key={id} className="flex flex-col border p-5 rule">
+              <div className="flex items-baseline gap-2">
+                <h2 className="type-display text-[1.25rem]">{c.title}</h2>
+                {id === "premium" ? (
+                  <span className="type-label text-muted">most people want this</span>
+                ) : null}
+              </div>
               <p className="mt-1 text-[0.875rem] text-muted">{c.line}</p>
 
               <p className="mt-4 flex items-baseline gap-1.5">
@@ -152,9 +153,17 @@ export function PlanCards({
                 {!cfg ? (
                   <p className="type-label text-muted">checking what&apos;s available</p>
                 ) : !live ? (
-                  <p className="type-label flex items-center gap-1.5 text-muted">
-                    <Padlock /> payments coming soon
-                  </p>
+                  <div
+                    className="flex w-full flex-col items-center gap-1 border border-dashed px-3 py-3 text-center rule"
+                    aria-disabled
+                  >
+                    <span className="type-label flex items-center gap-1.5 text-muted">
+                      <Padlock /> checkout not open yet
+                    </span>
+                    <span className="text-[0.75rem] leading-snug text-muted/80">
+                      Nothing to click here yet — this is switched off, not broken.
+                    </span>
+                  </div>
                 ) : !signedIn ? (
                   <a href="/signup" className="btn btn-ghost h-11 w-full px-4 text-[0.8125rem]">
                     Make an account first

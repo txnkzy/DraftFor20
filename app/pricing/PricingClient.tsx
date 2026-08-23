@@ -5,6 +5,37 @@ import { useSearchParams } from "next/navigation";
 import { Footer, Header } from "@/components/site/Chrome";
 import { PlanCards } from "@/components/premium/PlanCards";
 import { usePremium } from "@/lib/premium";
+import { useEffect, useState } from "react";
+
+/**
+ * One honest line at the top when checkout is off, so nobody works out for
+ * themselves that the buttons do nothing.
+ */
+function NotOpenYet() {
+  const [off, setOff] = useState(false);
+  useEffect(() => {
+    let stop = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/billing/config", { cache: "no-store" });
+        const d = (await res.json()) as { configured?: boolean };
+        if (!stop) setOff(d.configured === false);
+      } catch {
+        if (!stop) setOff(true);
+      }
+    })();
+    return () => { stop = true; };
+  }, []);
+
+  if (!off) return null;
+  return (
+    <p className="mt-5 border border-dashed px-3 py-2.5 text-[0.875rem] leading-relaxed text-muted rule">
+      <span className="type-label text-gold">not open yet</span>{" "}
+      Card payments are not switched on, so neither option can be bought at the moment. The
+      prices below are final. Everything free keeps working exactly as it does now.
+    </p>
+  );
+}
 
 export function PricingClient() {
   const premium = usePremium();
@@ -20,6 +51,8 @@ export function PricingClient() {
           The game is free and stays free: every category on the shelf, every draft, the results
           card and the audience vote. Premium is for filming it.
         </p>
+
+        <NotOpenYet />
 
         {cancelled ? (
           <p className="mt-5 border border-teal px-3 py-2.5 text-[0.875rem] text-ink">

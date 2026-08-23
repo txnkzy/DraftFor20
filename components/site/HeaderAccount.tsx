@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useHost, signInHref, signUpHref } from "@/lib/auth";
+import { usePremium } from "@/lib/premium";
 
 /** Sign in, or who you are signed in as. Hosting a custom category needs one.
  *  Signed in, this points at the profile: stats, decks and plan live there,
@@ -29,8 +30,38 @@ export function HeaderAccount() {
   }
 
   return (
-    <Link href="/profile" className="type-label text-teal hover:text-ink" title={user.email ?? ""}>
-      Profile
-    </Link>
+    <span className="flex items-baseline gap-2">
+      <PremiumMark />
+      <Link href="/profile" className="type-label text-teal hover:text-ink" title={user.email ?? ""}>
+        Profile
+      </Link>
+    </span>
+  );
+}
+
+/**
+ * A small mark next to Profile when premium is live.
+ *
+ * Rendered only for a signed-in visitor, so an anonymous page load does not
+ * pay for the premium lookup on every single page.
+ *
+ * Teal, not gold: gold means money in this palette and this is not a figure —
+ * it is the same "resolved, you have this" teal the padlock uses when open.
+ */
+function PremiumMark() {
+  const premium = usePremium();
+  if (!premium.active) return null;
+  return (
+    <span
+      className="type-label border px-1.5 py-0.5"
+      style={{ color: "var(--color-teal)", borderColor: "var(--color-teal)" }}
+      title={
+        premium.source === "game_night_pass"
+          ? "Game Night Pass active"
+          : "Premium active"
+      }
+    >
+      {premium.source === "game_night_pass" ? "pass" : "premium"}
+    </span>
   );
 }
