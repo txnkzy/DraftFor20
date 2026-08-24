@@ -49,6 +49,28 @@ export async function POST(req: Request) {
   }
   const sb = createClient(url, key, { auth: { persistSession: false } });
 
+  /**
+   * The global circuit breaker. Fails OPEN on any error: a limiter that
+   * cannot be reached must never be the reason a room cannot be created.
+   */
+  const externalBudget = async (
+    service: "wikidata" | "wikipedia" | "pageviews",
+  ): Promise<boolean> => {
+    try {
+      const { data, error } = await sb.rpc("df20_external_budget", { p_service: service });
+      if (error) return true;
+      if (data === false) {
+        console.warn(
+          `[category] global ${service} budget tripped — falling through to manual setup`,
+        );
+        return false;
+      }
+      return true;
+    } catch {
+      return true;
+    }
+  };
+
   // Typing your own category is the premium path. Verified here rather than
   // trusted from the UI, because this route is reachable with curl.
   const bearer = req.headers.get("authorization")?.replace(/^Bearer /i, "") ?? "";
@@ -73,14 +95,24 @@ export async function POST(req: Request) {
     spendBudget: () => allow("category_lookup", uid, 10, 3600),
 
     wikidata: async () => {
+      // GLOBAL budget, on top of this account's. A thousand hosts each making
+      // one legitimate lookup during a spike is still a thousand requests at
+      // Wikimedia in a minute; being blocked for it is a self-inflicted
+      // outage. Tripped means fall through, exactly like "no match".
+      if (!(await externalBudget("wikidata"))) return null;
       const found = await fetchWikidataCategory(query, minItems, keep);
       return found ? { title: found.title, items: found.items, entityId: found.entityId } : null;
     },
 
     wikipedia: async () => {
+      if (!(await externalBudget("wikipedia"))) return null;
       const found = await fetchCategory(query, minItems);
       if (!found) return null;
-      const ranked = await rankByPageviews(found.items, keep);
+      // the ranking is a second service and gets its own budget; losing it
+      // costs the popularity sort, not the lookup
+      const ranked = (await externalBudget("pageviews"))
+        ? await rankByPageviews(found.items, keep)
+        : { items: found.items.slice(0, keep), filtered: false };
       popularityFiltered = ranked.filtered;
       return { title: found.title, items: ranked.items, popularityFiltered: ranked.filtered };
     },
