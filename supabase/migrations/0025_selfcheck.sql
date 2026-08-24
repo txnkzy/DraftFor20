@@ -105,14 +105,17 @@ declare
     'public.my_handle()',
     -- v10: the verification gate reaches billing and admin
     'public.df20_email_verified(uuid)',
-    'public.my_verification()'
+    'public.my_verification()',
+    -- bot signals
+    'public.df20_record_signup(text,uuid,text,text,text,text,text)',
+    'public.admin_user_signals(text,text)'
   ];
   v_tables text[] := array['rooms','players','room_deck','room_pool','roster_entries',
                            'lots','bid_events','votes','rate_limits','category_library',
                            'category_library_items','category_library_aliases',
                            'wikipedia_cache','wikipedia_cache_items','profiles','templates',
                            'df20_config','user_categories','user_category_items',
-                           'audience_votes','billing_events','admin_audit'];
+                           'audience_votes','billing_events','signup_signals','disposable_domains','admin_audit'];
   v_columns text[] := array['profiles.premium_until','profiles.premium_source',
                             'profiles.subscription_status','profiles.stripe_customer_id',
                             'profiles.export_watermark','rooms.obs_token',

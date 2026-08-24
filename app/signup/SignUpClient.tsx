@@ -6,7 +6,8 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Field, TextInput } from "@/components/ui/Field";
 import { Footer, Header, SetupNotice } from "@/components/site/Chrome";
-import { passwordProblem, safeNext, signUpWithPassword } from "@/lib/auth";
+import { passwordProblem, safeNext } from "@/lib/auth";
+import { Turnstile } from "@/components/site/Turnstile";
 import { supabaseConfigured } from "@/lib/supabase/client";
 
 export function SignUpClient() {
@@ -23,6 +24,7 @@ function SignUp() {
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
   const [taken, setTaken] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
 
   const next =
     typeof window === "undefined"
@@ -46,7 +48,25 @@ function SignUp() {
     }
     setBusy(true);
     // password goes straight to Supabase Auth; nothing here keeps it
-    const res = await signUpWithPassword(email, password, next);
+    // through our own route, not straight to Supabase: the Turnstile token
+    // has to be checked BEFORE an account exists, and the request's signals
+    // recorded once it does
+    let res: {
+      ok?: boolean;
+      needsConfirmation?: boolean;
+      alreadyRegistered?: boolean;
+      message?: string;
+    };
+    try {
+      const r = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), password, next, turnstileToken }),
+      });
+      res = (await r.json()) as typeof res;
+    } catch {
+      res = { ok: false, message: "Could not reach the server." };
+    }
     setBusy(false);
     if (res.alreadyRegistered) {
       setTaken(true);
@@ -155,6 +175,8 @@ function SignUp() {
           ) : null}
 
           {error ? <p className="text-[0.875rem] text-coral">{error}</p> : null}
+
+          <Turnstile onToken={setTurnstileToken} />
 
           <Button variant="primary" size="lg" disabled={!ready} onClick={() => void submit()}>
             {busy ? "Creating…" : "Create account"}

@@ -5,6 +5,7 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { Button } from "@/components/ui/Button";
 import { TextInput } from "@/components/ui/Field";
 import { Footer, Header, SetupNotice } from "@/components/site/Chrome";
+import { TrustSignals } from "@/components/admin/TrustSignals";
 import { supabaseBrowser, supabaseConfigured } from "@/lib/supabase/client";
 
 /**
@@ -258,6 +259,8 @@ function Admin() {
         </nav>
 
         {error ? <p className="mt-4 text-[0.8125rem] text-coral">{error}</p> : null}
+
+        <TrustSignals />
 
         {tab === "users" ? (
           <section className="mt-6">
