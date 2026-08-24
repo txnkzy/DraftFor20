@@ -1,8 +1,8 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- DraftFor20 · 0027 · the last direct table write, and a check that keeps
---                     0026 from silently coming undone
+-- DraftFor20 · 0042 · the last direct table write, and a check that keeps
+--                     0041 from silently coming undone
 --
--- 0026 scoped the grants on public.profiles to the columns the app actually
+-- 0041 scoped the grants on public.profiles to the columns the app actually
 -- writes. That closed the escalation, but it also broke the one place that
 -- still wrote the table directly: HostClient.saveProfile() used a PostgREST
 -- upsert, and PostgREST compiles an upsert to
@@ -14,7 +14,7 @@
 -- cannot be pointed at anyone else) — but it would leave the client holding a
 -- write grant on a table that carries premium_until and stripe_customer_id,
 -- and the next column added to that table would be exposed by default. That
--- is the shape of the bug 0026 just fixed.
+-- is the shape of the bug 0041 just fixed.
 --
 -- So the write moves behind a SECURITY DEFINER function instead, exactly like
 -- save_export_style, and `authenticated` keeps no write grant on profiles at

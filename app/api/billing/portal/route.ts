@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
  * a blanket UPDATE grant on that table — so a user could PATCH someone else's
  * cus_... onto their own row and get handed the victim's portal: their
  * invoices, their billing address, their card's last four, and a cancel
- * button. 0026/0027 closed the write; the column is now settable only by
+ * button. 0041/0042 closed the write; the column is now settable only by
  * df20_apply_billing_event, from a signature-verified webhook.
  *
  * The shape check below is the second lock rather than the first. It cannot

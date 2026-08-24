@@ -6,7 +6,7 @@
 -- in a network tab is the same tell as the word "Iron Man" — so an undealt
 -- item's picture must not appear in any public projection either.
 --
--- Run after APPLY_V7.sql + 0026..0031. Cleans up after itself.
+-- Run after APPLY_V7.sql + 0041..0046. Cleans up after itself.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 do $test$
@@ -79,7 +79,7 @@ begin
   raise notice 'PASS  a missing picture is representable (client draws a card)';
 
   -- ── 6. One Piece Characters: the first seeded category with pictures ────
-  -- 0029 both adds a host to the allowlist and relies on it, so assert the
+  -- 0044 both adds a host to the allowlist and relies on it, so assert the
   -- pair together: a rejected host would silently null every portrait and
   -- leave a category that still has 80 names and no pictures at all.
   assert public.df20_clean_image_url(

@@ -16,7 +16,7 @@ interface Row {
  * This has to come before the Wikipedia path or the preview lies. Typing
  * "one piece" resolves on Wikipedia to "List of One Piece characters", whose
  * entries mostly redirect to group articles, so the cascade hands Jinbe the
- * Straw Hats line-up and Shanks the Four Emperors. 0029 seeded that category
+ * Straw Hats line-up and Shanks the Four Emperors. 0044 seeded that category
  * from MyAnimeList precisely to avoid that, and a preview showing the version
  * we rejected is worse than showing nothing.
  *

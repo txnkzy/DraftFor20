@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- DraftFor20 · 0031 · genres for the shelf
+-- DraftFor20 · 0046 · genres for the shelf
 --
 -- The library is 23 categories and growing, rendered as one flat wall of
 -- chips in /new. Past about a dozen that stops being a menu and becomes a
@@ -26,7 +26,7 @@ declare
     'sports', jsonb_build_array('Football Draft','NFL Teams','NBA Teams','MLB Teams'),
     'movies', jsonb_build_array('Disney Animated Movies','Movie Villains'),
     'tv',     jsonb_build_array('TV Sitcoms'),
-    -- 0029 and 0031 each added anime categories; this list has to be extended
+    -- 0044 and 0046 each added anime categories; this list has to be extended
     -- alongside them. The 'ungenred' notice below is what catches the miss —
     -- it is how Naruto and Demon Slayer were spotted sitting in 'other'.
     'anime',  jsonb_build_array('One Piece Characters','Naruto Characters',

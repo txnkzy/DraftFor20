@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- DraftFor20 · 0028 · a picture on the card being auctioned
+-- DraftFor20 · 0043 · a picture on the card being auctioned
 --
 -- Carries an image the whole length of the existing chain:
 --
@@ -297,7 +297,7 @@ begin
 end $$;
 
 -- ── selfcheck: df20_cache_wikipedia changed shape ─────────────────────────
--- search_path is pinned inline: 0027's pinning loop runs BEFORE this file and
+-- search_path is pinned inline: 0042's pinning loop runs BEFORE this file and
 -- only touches functions whose proconfig is null, so a df20_ function created
 -- afterwards has to pin itself or it stays unpinned forever.
 create or replace function public.df20_selfcheck_images()

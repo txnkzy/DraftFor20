@@ -107,7 +107,7 @@ rule makes them earn.
 | `manual` | **account** | third party builds the list via a setup link |
 | `saved` | **account** | a deck the host kept from an earlier draft, reshuffled |
 
-**The anime categories (0029, 0031) are the library categories with pictures**,
+**The anime categories (0044, 0046) are the library categories with pictures**,
 and it is seeded from MyAnimeList via Jikan rather than Wikipedia. Wikipedia
 was tried first and does not work for a cast: only the nine Straw Hats have
 their own article, and everyone else REDIRECTS to a group article, so
@@ -116,7 +116,7 @@ Emperors for Shanks. A wrong picture is worse than none and the redirect makes
 it look like a success — which is why `v8_images.sql` asserts *distinct*
 portraits, not just non-null ones. Regenerate with
 `node scripts/build-anime-seed.mjs` (One Piece has its own
-`build-onepiece-seed.mjs`, which 0029 came from); the names and URLs are
+`build-onepiece-seed.mjs`, which 0044 came from); the names and URLs are
 positional, so never hand-edit one list without the other.
 
 **Name order is per series and is not cosmetic.** MyAnimeList stores every
@@ -228,7 +228,7 @@ the default in place. Every such revoke in this repo since 0004 was a no-op:
 100 of 103 app functions were callable with the publishable key, including
 `df20_reveal_next` (deals the next card), `df20_add_to_roster` (writes a
 roster entry with no money check) and `df20_purge_old_rooms`. Proven with
-curl, not theorised. **0033 revokes from PUBLIC**; an explicit
+curl, not theorised. **0048 revokes from PUBLIC**; an explicit
 `grant execute ... to anon, authenticated` survives that, which is why the 69
 real client RPCs are unaffected. Write `revoke all on function f() from
 public, anon, authenticated` from now on, and note the same is NOT true of
@@ -236,11 +236,11 @@ tables — tables have no default PUBLIC grant.
 
 **A `create or replace function` from an older migration silently reverts a
 newer one.** `df20_fill_pool`, `start_draft` and `df20_reveal_next` were
-restored to their pre-0028 bodies by a later run of an older definition, which
+restored to their pre-0043 bodies by a later run of an older definition, which
 left the image columns and all 185 seeded portraits in place while quietly
 dropping the code that carries a picture from library to lot. Nothing errored;
 cards just stopped having images. If you re-apply a partial set of migrations,
-apply 0028 and 0031 after it or check `prosrc like '%image_url%'`.
+apply 0043 and 0046 after it or check `prosrc like '%image_url%'`.
 
 **plpgsql does not validate function bodies at creation.** A function can be
 created referencing one that doesn't exist; it only fails when called. This bit
@@ -275,18 +275,18 @@ policy means deny — but `profiles_update_own` lets a signed-in caller update
 *any column* of their own row, and `premium_until` is on that row. One
 `PATCH /rest/v1/profiles?id=eq.<own uid>` bought permanent premium, and
 setting `stripe_customer_id` to a stranger's `cus_…` would have handed over
-their Stripe billing portal the day keys were added. 0026 scoped the grants;
-0027 removed the client's write entirely in favour of `save_profile()`.
+their Stripe billing portal the day keys were added. 0041 scoped the grants;
+0042 removed the client's write entirely in favour of `save_profile()`.
 **`df20_grant_check()` asserts this and runs in the bundle footer next to
 `df20_selfcheck()` — selfcheck asserts what must exist, grant_check asserts
 what must NOT be reachable. Add to it whenever you add a privileged column.**
 
 **PostgREST compiles `.upsert()` to `on conflict do update set id = excluded.id`,**
 so an upsert needs UPDATE on the primary key. This is what broke the profile
-save the moment 0026 scoped the grants, and it is why the write is an RPC now.
+save the moment 0041 scoped the grants, and it is why the write is an RPC now.
 
 **`create or replace function` drops `proconfig`,** so it silently un-pins a
-`search_path` set by an earlier `alter function`. 0027's pinning loop runs at
+`search_path` set by an earlier `alter function`. 0042's pinning loop runs at
 the very end of the migration *and* the bundle for this reason.
 
 **`df20_public_state` returns `to_jsonb(rooms)`, so every column you add to
@@ -341,7 +341,7 @@ npx vercel deploy --prod --yes
 
 ### Database
 
-`supabase/APPLY_V7.sql` is the current bundle — `0008`–`0027`, additive,
+`supabase/APPLY_V7.sql` is the current bundle — `0008`–`0042`, additive,
 re-runnable, ends with `df20_selfcheck()` **and `df20_grant_check()`**. Paste
 into the Supabase SQL Editor.
 
@@ -354,7 +354,7 @@ Rebuild it after editing any migration:
 `0017`–`0020` are the v6 additions: profiles and premium, saved decks, the OBS
 and audience-vote surface, billing writes and the admin grant. `0021`–`0025`
 are v7: the no-limit clock, the scouting report, room content modes, the
-console and the moderation queue, then the selfcheck. `0026`–`0027` are the
+console and the moderation queue, then the selfcheck. `0041`–`0042` are the
 privilege fix: column-scoped grants on `profiles`, `save_profile()` as the
 only write path, pinned `search_path`, and `df20_grant_check()`. **Keep `df20_selfcheck()` updated when you add an RPC** — it now
 asserts columns as well as functions and tables, including that

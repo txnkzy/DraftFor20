@@ -1,4 +1,4 @@
--- 0026_profiles_grant_hardening.sql
+-- 0041_profiles_grant_hardening.sql
 --
 -- profiles and templates were left with blanket table grants to anon and
 -- authenticated. RLS is what actually holds them shut, and for anon it does:
@@ -60,11 +60,11 @@ begin
   if has_table_privilege('anon','public.profiles','SELECT')
     then v_bad := v_bad || 'anon can SELECT profiles'; end if;
 
-  -- NO assertion here that the branding columns are still writable. 0027
+  -- NO assertion here that the branding columns are still writable. 0042
   -- revokes every write grant on this table and moves the write behind
   -- save_profile(), so asserting the grants this file just issued would be
   -- asserting an intermediate state that the very next migration removes on
-  -- purpose. df20_grant_check() in 0027 is the assertion that describes the
+  -- purpose. df20_grant_check() in 0042 is the assertion that describes the
   -- end state; this one only has to say the privileged columns are shut.
 
   if coalesce(array_length(v_bad,1),0) > 0 then

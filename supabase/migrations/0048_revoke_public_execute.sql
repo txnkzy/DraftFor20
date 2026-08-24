@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- DraftFor20 · 0033 · every `revoke ... from anon, authenticated` in this
+-- DraftFor20 · 0048 · every `revoke ... from anon, authenticated` in this
 --                     repo has been a no-op, and here is why
 --
 -- Postgres grants EXECUTE on a new function to PUBLIC by default. anon and

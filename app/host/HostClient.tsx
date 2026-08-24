@@ -125,7 +125,7 @@ function Host() {
     // Through save_profile() rather than a direct upsert: `authenticated`
     // holds no write grant on profiles at all any more, because that table
     // also carries premium_until and stripe_customer_id and a blanket grant
-    // on it was a self-serve premium button (0026/0027). The RPC writes the
+    // on it was a self-serve premium button (0041/0042). The RPC writes the
     // three branding columns and nothing else, and takes the email from
     // auth.users rather than from us.
     const { error: e } = await sb.rpc("save_profile", {

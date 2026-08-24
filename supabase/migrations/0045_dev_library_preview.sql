@@ -1,11 +1,11 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- DraftFor20 · 0030 · reading a seeded category back, for the dev browser
+-- DraftFor20 · 0045 · reading a seeded category back, for the dev browser
 --
 -- /dev/cards previews the RUNTIME image cascade: it parses a Wikipedia list
 -- and resolves pictures live. That is the right preview for a category nobody
 -- curated, and the wrong one for a category somebody did — typing "one piece"
 -- there parses "List of One Piece characters" and shows different names with
--- the group-photo images that 0029 deliberately rejected. A preview that
+-- the group-photo images that 0044 deliberately rejected. A preview that
 -- disagrees with what a room will actually deal is worse than no preview.
 --
 -- So the dev browser needs to read category_library_items. Those are revoked
