@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { CardImage } from "./CardImage";
 import { FlipDigits } from "./FlipDigits";
 import { TensionBar } from "./TensionBar";
 import { digitsOf, formatCents } from "@/lib/money";
@@ -139,6 +140,15 @@ export function VerticalStage({
                 ? `${view.players.find((p) => p.seat === view.openerSeat)?.name ?? ""} decides`
                 : "on the block"}
           </span>
+
+          {view.itemName ? (
+            <CardImage
+              key={`img-${view.lotId ?? "none"}`}
+              name={view.itemName}
+              url={view.imageUrl}
+              height={280}
+            />
+          ) : null}
 
           <p
             key={view.lotId ?? "none"}

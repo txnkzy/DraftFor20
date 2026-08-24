@@ -67,6 +67,13 @@ export interface Lot {
   room_id: string;
   nfl_player_id: number | null;
   item_name: string;
+  /**
+   * Null is the normal case for a category with no pictures — the card is
+   * drawn from the name instead. It arrives only on a DEALT lot; the deck
+   * keeps every other item's picture hidden along with its name.
+   */
+  image_url: string | null;
+  image_license: "free" | "nonfree" | null;
   opener_player_id: string | null;
   status: LotStatus;
   current_bid_cents: number;

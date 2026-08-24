@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { CardImage } from "./CardImage";
 import { FlipDigits } from "./FlipDigits";
 import { TensionBar } from "./TensionBar";
 import { digitsOf } from "@/lib/money";
@@ -64,9 +65,10 @@ export function BidBoard({
 
       <div className="flex flex-col gap-3 px-4 py-5">
         {view.itemName ? (
-          <p key={view.lotId ?? "none"} className="type-display anim-deal text-[1.875rem] leading-[1.02]">
-            {view.itemName}
-          </p>
+          <div key={view.lotId ?? "none"} className="anim-deal flex flex-col gap-3">
+            <CardImage name={view.itemName} url={view.imageUrl} height={112} />
+            <p className="type-display text-[1.875rem] leading-[1.02]">{view.itemName}</p>
+          </div>
         ) : (
           <p className="text-[0.9375rem] text-muted">
             {view.phase === "complete" ? "Both rosters are full." : "Dealing."}

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Field, TextInput } from "@/components/ui/Field";
 import { Footer, Header, SetupNotice } from "@/components/site/Chrome";
@@ -26,6 +26,34 @@ interface Saved {
   default_timer_seconds: number;
   default_gives_per_player: number;
 }
+
+/** A shelf category. `genre` comes from list_free_categories (0032). */
+interface Cat {
+  id: string;
+  name: string;
+  item_count: number;
+  genre?: string;
+}
+
+/**
+ * Genres in the order a person would look for them, not alphabetically —
+ * sports and the screen categories first because that is what most people
+ * come for. Anything the server reports that is not listed here still shows,
+ * appended after these, so a new genre needs no UI change.
+ */
+const GENRE_ORDER = ["sports", "movies", "tv", "anime", "comics", "games", "music", "food", "other"];
+
+const GENRE_LABEL: Record<string, string> = {
+  sports: "Sports",
+  movies: "Movies",
+  tv: "TV",
+  anime: "Anime",
+  comics: "Comics",
+  games: "Games",
+  music: "Music",
+  food: "Food",
+  other: "Other",
+};
 
 export function NewRoomClient() {
   if (!supabaseConfigured()) return <SetupNotice />;
@@ -53,8 +81,11 @@ function NewRoom() {
   const [mode, setMode] = useState<"free" | "auto" | "handoff" | "deck">("free");
   const [decks, setDecks] = useState<{ id: string; name: string; item_count: number }[]>([]);
   const [deck, setDeck] = useState<string | null>(null);
-  const [shelf, setShelf] = useState<{ id: string; name: string; item_count: number }[]>([]);
-  const [picked, setPicked] = useState<{ id: string; name: string; item_count: number } | null>(null);
+  const [shelf, setShelf] = useState<Cat[]>([]);
+  const [picked, setPicked] = useState<Cat | null>(null);
+  // "all" is a real value, not a null: the shelf must have a way back to
+  // unfiltered without special-casing every read of it
+  const [genre, setGenre] = useState<string>("all");
   const [query, setQuery] = useState("");
   const [match, setMatch] = useState<{
     source: string; sourceId: string; matchedName: string; itemCount: number;
@@ -108,7 +139,7 @@ function NewRoom() {
     void (async () => {
       const { data } = await sb.rpc("list_free_categories");
       if (off) return;
-      const list = (data as { id: string; name: string; item_count: number }[]) ?? [];
+      const list = (data as Cat[]) ?? [];
       setShelf(list);
       const want = new URLSearchParams(window.location.search).get("mode");
       if (want === "auto" || want === "handoff" || want === "deck") setMode(want);
@@ -119,12 +150,33 @@ function NewRoom() {
     return () => { off = true; };
   }, [sb]);
 
+  /** genres actually present on the shelf, with counts, in reading order */
+  const genres = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const c of shelf) {
+      const g = c.genre ?? "other";
+      counts.set(g, (counts.get(g) ?? 0) + 1);
+    }
+    const known = GENRE_ORDER.filter((g) => counts.has(g));
+    // a genre the server knows about but this build does not still appears
+    const extra = [...counts.keys()].filter((g) => !GENRE_ORDER.includes(g)).sort();
+    return [...known, ...extra].map((g) => ({ g, n: counts.get(g) ?? 0 }));
+  }, [shelf]);
+
+  const visible = useMemo(
+    () => (genre === "all" ? shelf : shelf.filter((c) => (c.genre ?? "other") === genre)),
+    [shelf, genre],
+  );
+
+  // Rolls within what is on screen. Rolling into a category the filter is
+  // hiding would look like a bug, not a surprise.
   function rollRandom() {
-    if (shelf.length === 0) return;
-    let next = shelf[Math.floor(Math.random() * shelf.length)];
+    const pool = visible.length > 0 ? visible : shelf;
+    if (pool.length === 0) return;
+    let next = pool[Math.floor(Math.random() * pool.length)];
     // don't hand back the same one twice running
-    if (shelf.length > 1 && picked && next.id === picked.id) {
-      next = shelf[(shelf.indexOf(next) + 1 + Math.floor(Math.random() * (shelf.length - 1))) % shelf.length];
+    if (pool.length > 1 && picked && next.id === picked.id) {
+      next = pool[(pool.indexOf(next) + 1 + Math.floor(Math.random() * (pool.length - 1))) % pool.length];
     }
     setPicked(next);
     setTitle(next.name);
@@ -287,8 +339,34 @@ function NewRoom() {
                 Random
               </Button>
             </div>
+            {/* genre filter. Only worth drawing once there is more than one
+                genre to choose between. */}
+            {genres.length > 1 ? (
+              <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
+                <button
+                  onClick={() => setGenre("all")}
+                  className={`type-label border px-2.5 py-1 ${
+                    genre === "all" ? "border-teal text-teal" : "text-muted rule hover:text-ink"
+                  }`}
+                >
+                  All {shelf.length}
+                </button>
+                {genres.map(({ g, n }) => (
+                  <button
+                    key={g}
+                    onClick={() => setGenre(g)}
+                    className={`type-label border px-2.5 py-1 ${
+                      genre === g ? "border-teal text-teal" : "text-muted rule hover:text-ink"
+                    }`}
+                  >
+                    {GENRE_LABEL[g] ?? g} {n}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
             <div className="flex flex-wrap gap-1.5">
-              {shelf.map((c) => (
+              {visible.map((c) => (
                 <button
                   key={c.id}
                   onClick={() => { setPicked(c); setTitle(c.name); }}
@@ -303,6 +381,15 @@ function NewRoom() {
                 <span className="text-[0.8125rem] text-muted">loading categories…</span>
               ) : null}
             </div>
+
+            {/* the pick survives a filter that hides it, so say so rather than
+                leaving the summary line below referring to nothing on screen */}
+            {picked && genre !== "all" && !visible.some((c) => c.id === picked.id) ? (
+              <p className="type-label mt-2 text-muted">
+                still picked: <span className="text-coral">{picked.name}</span> (in{" "}
+                {GENRE_LABEL[picked.genre ?? "other"] ?? picked.genre})
+              </p>
+            ) : null}
             {picked ? (
               <p className="type-num text-[0.75rem] text-muted">
                 {picked.name} &middot; {picked.item_count} possible picks &middot; you won&apos;t see

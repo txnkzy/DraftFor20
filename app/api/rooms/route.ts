@@ -1,7 +1,7 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { allow, clientIp } from "@/lib/rateLimit";
 import { verifyPow } from "@/lib/pow";
+import { anonClient, optionalUser, unconfigured } from "@/lib/api/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,22 +35,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ message: "DF20_RATE_LIMITED" }, { status: 429 });
   }
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) {
-    return NextResponse.json({ message: "Supabase is not configured." }, { status: 500 });
-  }
-
   const num = (v: unknown, fallback: number) =>
     typeof v === "number" && Number.isFinite(v) ? Math.trunc(v) : fallback;
 
-  // when a token is present, talk to PostgREST as that user so auth.uid()
-  // resolves; without it this is an ordinary anonymous free-shelf room
-  const token = req.headers.get("authorization")?.replace(/^Bearer /i, "") ?? "";
-  const sb = createClient(url, key, {
-    auth: { persistSession: false },
-    ...(token ? { global: { headers: { Authorization: `Bearer ${token}` } } } : {}),
-  });
+  // DELIBERATELY optional. Anonymous play is the product: two people open a
+  // room with a code and neither needs an account. A signed-in host talks to
+  // PostgREST as themselves so auth.uid() resolves and create_room can
+  // attribute the room to their profile; everyone else gets the free shelf.
+  // The RPC decides what each of those is allowed to ask for.
+  const auth = await optionalUser(req);
+  const sb = auth?.sb ?? anonClient();
+  if (!sb) return unconfigured();
   const { data, error } = await sb.rpc("create_room", {
     p_title: typeof body.title === "string" ? body.title : "Football Draft",
     p_roster_size: num(body.rosterSize, 5),

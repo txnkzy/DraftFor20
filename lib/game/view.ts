@@ -29,6 +29,8 @@ export interface BoardView {
   phase: Phase;
   /** the revealed card. Nothing is known about who is next. */
   itemName: string | null;
+  /** the revealed card's picture, or null to draw one from the name */
+  imageUrl: string | null;
   currentBidCents: number;
   highBidderSeat: number | null;
   onClockSeat: number | null;
@@ -69,6 +71,7 @@ export function buildBoardView(
     title: s.room.title,
     phase: s.room.phase,
     itemName: live?.item_name ?? null,
+    imageUrl: live?.image_url ?? null,
     currentBidCents: live?.current_bid_cents ?? 0,
     highBidderSeat: seatOf(live?.high_bidder_player_id),
     onClockSeat: seatOf(live?.on_the_clock_player_id),

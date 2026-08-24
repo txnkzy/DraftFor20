@@ -13,9 +13,23 @@
 const API = "https://en.wikipedia.org/w/api.php";
 const UA = "DraftFor20/1.0 (https://draftfor20.vercel.app; hello@draftfor20.app)";
 
+export interface WikiItem {
+  /** display text, exactly as it was played before images existed */
+  name: string;
+  /**
+   * The canonical article the list linked to, e.g. "Dr. No (film)".
+   *
+   * This is the only reliable key for looking an item up anywhere else: the
+   * display text alone is ambiguous ("Dr. No" is a disambiguation page) and
+   * often shorter than the real title. Null when the list rendered the item
+   * as plain text, which is common inside table cells.
+   */
+  title: string | null;
+}
+
 export interface WikiResult {
   title: string;
-  items: string[];
+  items: WikiItem[];
 }
 
 const JUNK = new RegExp(
@@ -52,6 +66,33 @@ function clean(raw: string): string {
     .trim();
 }
 
+/**
+ * The article a list entry points at, or null.
+ *
+ * Colons are NOT excluded from the match: "Star Trek: The Next Generation" is
+ * a real title and dropping every href with a colon would silently lose a
+ * large slice of exactly the lists people want to draft. Namespaces are
+ * filtered by name afterwards instead, which is the thing the colon was a
+ * proxy for. Red links point at /w/index.php rather than /wiki/, so they
+ * never match in the first place.
+ */
+const NAMESPACE = /^(file|image|template|category|portal|help|wikipedia|special|talk|module|draft)\s*:/i;
+
+export function linkTitle(rawHtml: string): string | null {
+  const m = /<a\b[^>]*href="\/wiki\/([^"]+)"[^>]*>/i.exec(rawHtml);
+  if (!m) return null;
+  let t: string;
+  try {
+    t = decodeURIComponent(m[1].split("#")[0]);
+  } catch {
+    return null; // malformed percent-encoding
+  }
+  t = t.replace(/_/g, " ").trim();
+  if (!t || NAMESPACE.test(t)) return null;
+  if (/^list of\b/i.test(t)) return null;
+  return t;
+}
+
 function usable(s: string): boolean {
   if (s.length < 2 || s.length > 60) return false;
   if (JUNK.test(s)) return false;
@@ -68,7 +109,7 @@ function usable(s: string): boolean {
  * of James Bond films" into a list of see-also links, so when a table carries
  * enough rows it wins outright and the bullets are ignored.
  */
-export function parseArticleHtml(html: string, minItems = 1): string[] {
+export function parseArticleHtml(html: string, minItems = 1): WikiItem[] {
   let body = html
     .replace(/<table\b[^>]*class="[^"]*(infobox|navbox|metadata|sidebar|vertical-navbox)[^"]*"[\s\S]*?<\/table>/gi, "")
     .replace(/<style\b[\s\S]*?<\/style>/gi, "")
@@ -81,7 +122,7 @@ export function parseArticleHtml(html: string, minItems = 1): string[] {
 
   const collect = (raw: string[]) => {
     const seen = new Set<string>();
-    const items: string[] = [];
+    const items: WikiItem[] = [];
     for (const r of raw) {
       // "Dr. No – the first Bond film" is a nav gloss; keep the name only
       const s = clean(r).split(/\s+[–—]\s+/)[0].trim();
@@ -90,13 +131,15 @@ export function parseArticleHtml(html: string, minItems = 1): string[] {
       const k = s.toLowerCase();
       if (seen.has(k)) continue;
       seen.add(k);
-      items.push(s);
+      // read the link off the ORIGINAL fragment: clean() has already thrown
+      // every tag away by the time we have the display text
+      items.push({ name: s, title: linkTitle(r) });
       if (items.length >= 300) break;
     }
     return items;
   };
 
-  const fromTables: string[] = [];
+  const fromTables: string[] = []; // raw cell HTML, so the link survives
   for (const table of body.matchAll(/<table\b[^>]*class="[^"]*wikitable[^"]*"[\s\S]*?<\/table>/gi)) {
     for (const row of table[0].matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)) {
       // a row of nothing but <th> is the header; "Title" and "Name" are not

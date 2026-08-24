@@ -10,6 +10,9 @@ export const dynamic = "force-dynamic";
  * address. Without this, anyone can use the sign-in form to mailbomb a third
  * party, and the sender reputation that suffers is ours.
  */
+// AUTH: public by necessity — this is how a signed-out person signs in.
+// Guarded by proof of send-rate instead: per-IP and per-address limits, and
+// shouldCreateUser:false so it cannot be used to enumerate or create accounts.
 export async function POST(req: Request) {
   const ip = clientIp(req);
 

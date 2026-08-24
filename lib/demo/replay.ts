@@ -117,6 +117,10 @@ export function frameAt(progress: number): DemoFrame {
       title: "Football Draft",
       phase: offering ? "offering" : bidding ? "bidding" : "offering",
       itemName: item,
+      // the landing replay ships no artwork and fetches nothing: null draws
+      // the generated card from the name, which is also an honest preview of
+      // what a category with no pictures looks like
+      imageUrl: null,
       currentBidCents: bid,
       highBidderSeat: bidding ? high : null,
       onClockSeat: bidding ? (high === 1 ? 2 : 1) : null,

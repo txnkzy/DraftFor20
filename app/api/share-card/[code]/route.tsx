@@ -22,6 +22,9 @@ export const dynamic = "force-dynamic";
  * and anyone editing this URL all get the same watermarked card.
  */
 
+// AUTH: public by design — the results card is the artefact people post.
+// The room code is the capability; the watermark is resolved server-side
+// from the host's profile and there is no parameter that turns it off.
 const W = 1080;
 const H = 1920;
 const BOARD = "#14161C";

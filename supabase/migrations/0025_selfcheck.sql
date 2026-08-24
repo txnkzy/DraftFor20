@@ -67,6 +67,13 @@ declare
     'public.df20_manual_winner(uuid)',
     'public.save_export_style(boolean,text,text,text)',
     'public.df20_export_style(text)',
+    -- 0027: the only write path to profiles. `authenticated` holds no write
+    -- grant on that table, so if this function goes missing the profile page
+    -- fails shut rather than quietly falling back to a direct upsert.
+    'public.save_profile(text,text,text)',
+    -- 0027: asserts what must NOT be reachable, next to selfcheck's what
+    -- must exist. Run by the bundle footer.
+    'public.df20_grant_check()',
     'public.save_room_deck(text,text)',
     'public.my_decks()',
     'public.delete_deck(uuid)',

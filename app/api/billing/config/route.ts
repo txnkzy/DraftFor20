@@ -12,6 +12,8 @@ export const dynamic = "force-dynamic";
  * to fail. The list of missing variable names is deliberately not returned;
  * it is for the server log, not for a visitor.
  */
+// AUTH: public — returns three booleans about which plans are purchasable.
+// No account state, no prices from the database, nothing user-specific.
 export async function GET() {
   const s = billingStatus();
   return NextResponse.json(

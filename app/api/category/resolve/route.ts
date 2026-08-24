@@ -1,7 +1,8 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { allow } from "@/lib/rateLimit";
 import { fetchCategory } from "@/lib/wikipedia";
+import { resolveImages } from "@/lib/images/resolve";
+import { requireUser } from "@/lib/api/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,20 +31,11 @@ export async function POST(req: Request) {
   if (rosterSize < 1 || rosterSize > 30) rosterSize = 5;
   const minItems = rosterSize * 2;
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) {
-    return NextResponse.json({ message: "Supabase is not configured." }, { status: 500 });
-  }
-  const sb = createClient(url, key, { auth: { persistSession: false } });
-
-  // Typing your own category is the premium path. Verified here rather than
+  // Typing your own category is the gated path. Verified here rather than
   // trusted from the UI, because this route is reachable with curl.
-  const bearer = req.headers.get("authorization")?.replace(/^Bearer /i, "") ?? "";
-  const { data: who } = bearer ? await sb.auth.getUser(bearer) : { data: { user: null } };
-  if (!who?.user) {
-    return NextResponse.json({ message: "DF20_SIGNIN_REQUIRED" }, { status: 401 });
-  }
+  const auth = await requireUser(req);
+  if (auth instanceof NextResponse) return auth;
+  const sb = auth.sb;
 
   // library and cache hits are free; only the Wikipedia path is rationed
   const { data: hit } = await sb.rpc("df20_match_category", {
@@ -61,13 +53,34 @@ export async function POST(req: Request) {
   }
 
   // keyed to the account, not a shared IP
-  if (!(await allow("wiki_lookup", who.user.id, 10, 3600))) {
+  if (!(await allow("wiki_lookup", auth.user.id, 10, 3600))) {
     return NextResponse.json({ message: "DF20_RATE_LIMITED" }, { status: 429 });
   }
 
   const found = await fetchCategory(query, minItems);
   if (!found) {
     return NextResponse.json({ source: null, message: "DF20_NO_MATCH" }, { status: 200 });
+  }
+
+  // Pictures are resolved HERE, once, and cached with the names — not per
+  // room. A category costs this round-trip the first time anybody drafts it
+  // and nothing on every draft after, which is what keeps it off the path
+  // between two players waiting in a lobby.
+  //
+  // A failure is not fatal: resolveImages already degrades item by item, and
+  // if the whole call throws, the category is still perfectly playable with
+  // no pictures at all.
+  let images: (string | null)[] = [];
+  let licenses: (string | null)[] = [];
+  try {
+    const resolved = await resolveImages(found.items);
+    // a generated card is not stored — a null URL tells the client to draw
+    // one from the item name, which costs nothing and cannot go stale
+    images = resolved.map((r) => (r.source === "generated" ? null : r.url));
+    licenses = resolved.map((r) => (r.source === "generated" ? null : r.license));
+  } catch {
+    images = [];
+    licenses = [];
   }
 
   // public encyclopedia content, cached with no opt-in so the next room asking
@@ -77,7 +90,10 @@ export async function POST(req: Request) {
     p_secret: secret,
     p_query: query,
     p_title: found.title,
-    p_items: found.items,
+    p_items: found.items.map((i) => i.name),
+    // positional against p_items; the RPC pairs them by index
+    p_images: images,
+    p_licenses: licenses,
   });
   if (error) {
     return NextResponse.json({ message: "Could not store that category." }, { status: 500 });

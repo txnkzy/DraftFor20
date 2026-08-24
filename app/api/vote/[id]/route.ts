@@ -19,6 +19,10 @@ export const dynamic = "force-dynamic";
  * limit underneath is for. Neither is airtight and neither pretends to be;
  * together they cost more than a refresh, which is the bar this has to clear.
  */
+// AUTH: public by design — the audience vote is the acquisition loop, so
+// requiring an account here would defeat the point. Identity is a capability
+// instead: an httpOnly cookie this route issues, with the real constraint as
+// a primary key (room_id, voter_key) in Postgres.
 const COOKIE = "df20_av";
 const YEAR = 60 * 60 * 24 * 365;
 

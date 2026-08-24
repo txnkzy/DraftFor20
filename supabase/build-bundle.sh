@@ -11,6 +11,9 @@ FILES=(
   0015_signin_gate 0016_email_verified
   0017_profiles 0018_content 0019_billing 0020_selfcheck
   0021_timer 0022_scouting 0023_content_mode 0024_admin 0025_selfcheck
+  0026_profiles_grant_hardening 0027_write_paths_and_grant_check
+  0028_item_images 0029_onepiece 0030_dev_library_preview 0031_anime_categories
+  0032_library_genres 0033_revoke_public_execute
 )
 
 {
@@ -32,6 +35,7 @@ HDR
 do $$
 begin
   raise notice '%', public.df20_selfcheck();
+  raise notice '%', public.df20_grant_check();
   raise notice 'free shelf: % categories', jsonb_array_length(public.list_free_categories());
 end $$;
 FTR

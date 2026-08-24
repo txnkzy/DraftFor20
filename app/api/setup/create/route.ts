@@ -1,5 +1,5 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import { requireUser } from "@/lib/api/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,27 +13,11 @@ export const dynamic = "force-dynamic";
  * auth.uid() as null for people who were plainly signed in.
  */
 export async function POST(req: Request) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) {
-    return NextResponse.json({ message: "Supabase is not configured." }, { status: 500 });
-  }
-
-  const token = req.headers.get("authorization")?.replace(/^Bearer /i, "") ?? "";
-  if (!token) {
-    return NextResponse.json({ message: "DF20_SIGNIN_REQUIRED" }, { status: 401 });
-  }
-
-  // this client speaks to PostgREST AS THE USER, so auth.uid() resolves
-  const sb = createClient(url, key, {
-    auth: { persistSession: false },
-    global: { headers: { Authorization: `Bearer ${token}` } },
-  });
-
-  const { data: who } = await sb.auth.getUser(token);
-  if (!who?.user) {
-    return NextResponse.json({ message: "DF20_SIGNIN_REQUIRED" }, { status: 401 });
-  }
+  // requireUser hands back a client already speaking to PostgREST AS THE
+  // USER, which is what makes auth.uid() resolve inside the RPC
+  const auth = await requireUser(req);
+  if (auth instanceof NextResponse) return auth;
+  const sb = auth.sb;
 
   // the host picks how their own room looks even when somebody else builds
   // the list; premium is checked inside the RPC, not here
