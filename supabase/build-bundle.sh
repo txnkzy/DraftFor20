@@ -11,7 +11,7 @@ FILES=(
   0015_signin_gate 0016_email_verified
   0017_profiles 0018_content 0019_billing 0020_selfcheck
   0021_timer 0022_scouting 0023_content_mode 0024_admin 0025_selfcheck
-  0026_leave 0027_provenance 0028_admin_roles 0029_handles 0030_verify_gates 0031_lock_handle 0032_profile_on_signup 0033_premium_line 0034_free_vote 0035_load_indexes 0036_tally_poll 0037_circuit_breaker 0038_signup_signals 0039_admin_signals
+  0026_leave 0027_provenance 0028_admin_roles 0029_handles 0030_verify_gates 0031_lock_handle 0032_profile_on_signup 0033_premium_line 0034_free_vote 0035_load_indexes 0036_tally_poll 0037_circuit_breaker 0038_signup_signals 0039_admin_signals 0040_signal_sanity
 )
 
 {

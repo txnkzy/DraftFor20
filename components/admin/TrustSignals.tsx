@@ -31,6 +31,8 @@ interface Signal {
   ip_shared_with: number | null;
   seconds_to_verify: number | null;
   seconds_to_first_action: number | null;
+  has_signup_record: boolean;
+  has_played: boolean;
   rate_limit_hits: number;
 }
 
@@ -51,17 +53,41 @@ function duration(s: number | null): string {
   return `${Math.round(s / 86400)}d`;
 }
 
-/** Which signals are present. NOT a score — a reason to look, nothing more. */
-function notable(r: Signal): string[] {
-  const out: string[] = [];
-  if (r.seconds_to_first_action === null) out.push("never played");
-  if (r.seconds_to_verify === null) out.push("never verified");
-  else if (r.seconds_to_verify < 15) out.push("verified instantly");
-  if (r.disposable) out.push("disposable email");
-  if ((r.ip_shared_with ?? 0) >= 3) out.push(`${r.ip_shared_with} others on this IP`);
-  if (r.turnstile === "failed") out.push("failed bot check");
-  if (r.rate_limit_hits > 20) out.push("heavy rate-limit use");
-  return out;
+/**
+ * Which signals are actually PRESENT — things observed, never things missing.
+ *
+ * The first version flagged nearly every account, the creator's included, by
+ * counting absent data as evidence: a backfilled profile row made
+ * seconds_to_verify negative, negative satisfies "under 15 seconds", and the
+ * oldest accounts in the system came out looking automated. Absence of
+ * evidence is not evidence.
+ *
+ * The badge needs TWO signals, or one strong one. A single weak signal on its
+ * own is the normal condition of a real account, and a badge that appears on
+ * everything tells you nothing.
+ */
+function notable(r: Signal): { flags: string[]; strong: boolean } {
+  const flags: string[] = [];
+  let strong = false;
+
+  // observed, and hard to explain innocently
+  if (r.turnstile === "failed") {
+    flags.push("failed the bot check");
+    strong = true;
+  }
+
+  if (r.disposable) flags.push("disposable email");
+  if ((r.ip_shared_with ?? 0) >= 3) {
+    flags.push(`${r.ip_shared_with} other accounts from this IP`);
+  }
+  // only meaningful where the two timestamps are comparable at all
+  if (r.seconds_to_verify !== null && r.seconds_to_verify < 15) {
+    flags.push("verified within seconds");
+  }
+  if (!r.has_played) flags.push("never played anything");
+  if (r.rate_limit_hits > 20) flags.push("heavy rate-limit use");
+
+  return { flags, strong };
 }
 
 export function TrustSignals() {
@@ -132,7 +158,8 @@ export function TrustSignals() {
 
       <ul className="mt-2 flex flex-col">
         {rows.map((r) => {
-          const flags = notable(r);
+          const { flags, strong } = notable(r);
+          const worthLook = strong || flags.length >= 2;
           const isOpen = open === r.id;
           return (
             <li key={r.id} className="border-b py-3 rule">
@@ -147,7 +174,7 @@ export function TrustSignals() {
                   {r.email}
                 </span>
                 {r.premium ? <span className="type-label text-teal">premium</span> : null}
-                {flags.length > 0 ? (
+                {worthLook ? (
                   <span className="type-label text-gold" title={flags.join(" · ")}>
                     worth a look
                   </span>
@@ -163,7 +190,9 @@ export function TrustSignals() {
                     {(r.ip_shared_with ?? 0) > 0 ? ` · +${r.ip_shared_with} here` : ""}
                   </span>
                 ) : (
-                  <span>no signup record</span>
+                  <span title="This account was created before signup signals were recorded.">
+                    predates signal capture
+                  </span>
                 )}
                 {r.disposable ? <span className="text-gold">disposable</span> : null}
                 {r.turnstile && r.turnstile !== "skipped" ? (
@@ -176,7 +205,7 @@ export function TrustSignals() {
                 <div className="mt-2 border p-3 rule">
                   {flags.length > 0 ? (
                     <p className="text-[0.8125rem] leading-relaxed text-muted">
-                      <span className="type-label text-gold">signals present</span>{" "}
+                      <span className="type-label text-gold">observed</span>{" "}
                       {flags.join(" · ")}. None of these is proof of anything on its own.
                     </p>
                   ) : (
@@ -184,6 +213,12 @@ export function TrustSignals() {
                       Nothing stands out on this account.
                     </p>
                   )}
+                  {!r.has_signup_record ? (
+                    <p className="mt-1.5 text-[0.75rem] leading-relaxed text-muted">
+                      Created before signup signals were recorded, so there is no IP, user agent
+                      or bot-check result for it. That is chronology, not a finding.
+                    </p>
+                  ) : null}
                   <p className="mt-2 break-all font-mono text-[0.6875rem] text-muted/80">
                     {r.user_agent ?? "no user agent recorded"}
                   </p>

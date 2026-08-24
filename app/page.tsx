@@ -1,10 +1,28 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ScrollBidWarLoader } from "@/components/site/ScrollBidWarLoader";
+import { SITE_URL } from "@/lib/site";
 import { ReserveDiagram } from "@/components/site/ReserveDiagram";
 import { ShareCard } from "@/components/results/ShareCard";
 import { Footer, Header } from "@/components/site/Chrome";
 import { SAMPLE_CARD } from "@/lib/demo/sample";
+
+const schema = {
+  "@context": "https://schema.org",
+  "@type": "VideoGame",
+  name: "DraftFor20",
+  alternateName: ["The $20 Draft", "$20 Draft Game"],
+  url: SITE_URL,
+  description:
+    "A live head-to-head auction draft game for any category. Two players split a fixed bankroll across a hidden deck, bidding under a server-run clock.",
+  applicationCategory: "GameApplication",
+  operatingSystem: "Web browser",
+  gamePlatform: "Web browser",
+  playMode: "MultiPlayer",
+  numberOfPlayers: { "@type": "QuantitativeValue", minValue: 2, maxValue: 2 },
+  genre: ["Party game", "Auction", "Strategy"],
+  offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+};
 
 export const metadata: Metadata = {
   title: "DraftFor20 — the $20 auction draft game for any category",
@@ -47,6 +65,10 @@ const HOST_CONTROLS: [string, string][] = [
 export default function Home() {
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+      />
       <Header />
 
       <main>

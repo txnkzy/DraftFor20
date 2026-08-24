@@ -17,6 +17,9 @@ export function Header({ thin = false }: { thin?: boolean }) {
           <Link href="/join" className="type-label text-muted hover:text-ink">
             Join
           </Link>
+          <Link href="/20-dollar-draft" className="type-label text-muted hover:text-ink">
+            $20 Draft
+          </Link>
           <Link href="/pricing" className="type-label text-muted hover:text-ink">
             Pricing
           </Link>
@@ -35,6 +38,9 @@ export function Footer() {
     <footer className="mt-16 border-t rule">
       <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-5 gap-y-2 px-4 py-6">
         <span className="type-label text-muted">DraftFor20</span>
+        <Link href="/20-dollar-draft" className="text-[0.8125rem] text-muted hover:text-ink">
+          What is the $20 draft?
+        </Link>
         <Link href="/privacy" className="text-[0.8125rem] text-muted hover:text-ink">
           Privacy
         </Link>
