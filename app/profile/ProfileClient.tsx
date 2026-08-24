@@ -1,14 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Footer, Header, SetupNotice } from "@/components/site/Chrome";
-import { Padlock } from "@/components/premium/Padlock";
-import { UpgradeCard } from "@/components/premium/UpgradeCard";
+import { BillingPanel } from "@/components/premium/BillingPanel";
 import { BADGES } from "@/lib/badges";
 import { ScoutingReport, type ScoutReport } from "@/components/profile/ScoutingReport";
-import { accessToken, signInHref } from "@/lib/auth";
+import { HandleRow } from "@/components/profile/HandleRow";
+import { signInHref, signOut } from "@/lib/auth";
 import { supabaseBrowser, supabaseConfigured } from "@/lib/supabase/client";
 
 interface Stats {
@@ -41,12 +42,6 @@ interface Deck {
   item_count: number;
   created_at: string;
 }
-
-const SOURCE_LABEL: Record<string, string> = {
-  stripe_subscription: "subscription",
-  game_night_pass: "game night pass",
-  admin_grant: "granted",
-};
 
 export function ProfileClient() {
   if (!supabaseConfigured()) return <SetupNotice />;
@@ -128,7 +123,6 @@ function Profile() {
   }
 
   const p = stats.premium;
-  const until = p.until ? new Date(p.until) : null;
 
   return (
     <>
@@ -143,7 +137,7 @@ function Profile() {
             <h1 className="type-display text-[1.75rem]">
               {stats.display_name || "Your profile"}
             </h1>
-            <p className="type-num mt-1 text-[0.8125rem] text-muted">{stats.email}</p>
+            <HandleRow email={stats.email} />
           </div>
         </div>
 
@@ -243,37 +237,19 @@ function Profile() {
         </section>
 
         {/* ── plan ───────────────────────────────────────────────────────── */}
-        <section className="mt-9">
-          <h2 className="type-display flex items-center gap-2 text-[1rem]">
-            <Padlock size={13} open={p.active} />
-            Plan
-          </h2>
-          {p.active ? (
-            <div className="mt-3 border p-4" style={{ borderColor: "var(--color-teal)" }}>
-              <p className="type-label text-teal">premium active</p>
-              <p className="mt-2 text-[0.875rem] leading-relaxed text-muted">
-                {SOURCE_LABEL[p.source ?? ""] ?? "active"}
-                {until ? ` · runs until ${until.toLocaleDateString()}` : ""}. The Content tab,
-                the OBS link and card branding are unlocked.
-              </p>
-              <p className="mt-2 text-[0.875rem] leading-relaxed text-muted">
-                Your results cards still carry the DraftFor20 watermark until you turn it off
-                yourself, on any finished draft under &ldquo;card options&rdquo;.
-              </p>
-              {p.has_customer ? <ManageBilling /> : null}
-            </div>
-          ) : (
-            <UpgradeCard feature="premium" signedIn compact />
-          )}
-        </section>
+        <BillingPanel premium={p} />
 
         <div className="mt-10 flex flex-wrap gap-2">
           <Link href="/new" className="btn btn-primary h-12 px-5 text-[0.875rem]">
             Start a room
           </Link>
+          <Link href="/profile/billing" className="btn btn-ghost h-12 px-5 text-[0.875rem]">
+            Billing
+          </Link>
           <Link href="/host" className="btn btn-ghost h-12 px-5 text-[0.875rem]">
             Host settings
           </Link>
+          <SignOutButton />
         </div>
       </main>
       <Footer />
@@ -281,43 +257,35 @@ function Profile() {
   );
 }
 
-/** Cancelling, changing a card and reading invoices are Stripe's pages. */
-function ManageBilling() {
+/**
+ * Signing out lived only on /host, which nothing has linked to since the
+ * header started pointing at this page — so there was no way out of an
+ * account without clearing cookies by hand.
+ *
+ * router.refresh() after the sign-out matters: without it the server
+ * components keep rendering the session that no longer exists.
+ */
+function SignOutButton() {
+  const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-
-  async function open() {
-    setBusy(true);
-    setMessage(null);
-    try {
-      const token = await accessToken();
-      const res = await fetch("/api/billing/portal", {
-        method: "POST",
-        headers: token ? { authorization: `Bearer ${token}` } : {},
-      });
-      const d = (await res.json()) as { url?: string; configured?: boolean; message?: string };
-      if (d.url) {
-        window.location.href = d.url;
-        return;
-      }
-      setMessage(
-        d.configured === false
-          ? "Payments aren't switched on yet, so there's nothing to manage."
-          : (d.message ?? "Could not open the billing portal."),
-      );
-    } catch {
-      setMessage("Could not open the billing portal.");
-    }
-    setBusy(false);
-  }
 
   return (
-    <div className="mt-4">
-      <Button variant="ghost" size="sm" disabled={busy} onClick={() => void open()}>
-        {busy ? "Opening" : "Manage billing"}
-      </Button>
-      {message ? <p className="mt-2 text-[0.8125rem] text-muted">{message}</p> : null}
-    </div>
+    <Button
+      variant="quiet"
+      className="h-12 px-5 text-[0.875rem]"
+      disabled={busy}
+      onClick={() => {
+        setBusy(true);
+        void signOut()
+          .then(() => {
+            router.push("/");
+            router.refresh();
+          })
+          .catch(() => setBusy(false));
+      }}
+    >
+      {busy ? "Signing out" : "Sign out"}
+    </Button>
   );
 }
 

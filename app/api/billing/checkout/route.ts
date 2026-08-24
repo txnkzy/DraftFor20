@@ -46,6 +46,15 @@ export async function POST(req: Request) {
 
   const auth = await requireUser(req);
   if (auth instanceof NextResponse) return auth;
+  const sb = auth.sb;
+
+  // An unverified account cannot buy. Asked of the database rather than read
+  // off the JWT so "verified" has one definition in this system, and it is
+  // the same one the custom-category and admin gates use.
+  const { data: v } = await sb.rpc("my_verification");
+  if ((v as { verified?: boolean } | null)?.verified === false) {
+    return NextResponse.json({ message: "DF20_EMAIL_UNVERIFIED" }, { status: 403 });
+  }
 
   if (!(await allow("checkout", `${auth.user.id}:${clientIp(req)}`, 12, 3600))) {
     return NextResponse.json({ message: "DF20_RATE_LIMITED" }, { status: 429 });
@@ -75,8 +84,13 @@ export async function POST(req: Request) {
         ? { customer: known.customerId }
         : { customer_email: auth.user.email ?? undefined }),
       allow_promotion_codes: true,
-      success_url: `${origin}${returnTo}?upgraded=1`,
-      cancel_url: `${origin}${returnTo}`,
+      // The webhook is what actually grants access, and it can land after the
+      // customer is already back. The success page waits for it rather than
+      // claiming an upgrade the database has not been told about yet.
+      success_url:
+        `${origin}/billing/success?session_id={CHECKOUT_SESSION_ID}` +
+        `&plan=${plan}&next=${encodeURIComponent(returnTo)}`,
+      cancel_url: `${origin}/pricing?cancelled=1`,
     });
 
     if (!session.url) {

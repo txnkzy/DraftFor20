@@ -5284,7 +5284,7 @@ declare
     'public.df20_match_category(text,integer)',
     'public.df20_fill_pool(uuid,text,uuid)',
     'public.df20_seed_category(text,text[])',
-    'public.df20_cache_wikipedia(text,text,text,text[])',
+    'public.df20_cache_wikipedia(text,text,text,text[],text,text)',
     'public.df20_looks_like_person(text)',
     'public.df20_person_oriented_category(text)',
     'public.list_free_categories()',
@@ -5314,11 +5314,11 @@ declare
     'public.df20_manual_winner(uuid)',
     'public.save_export_style(boolean,text,text,text)',
     'public.df20_export_style(text)',
-    -- 0027: the only write path to profiles. `authenticated` holds no write
+    -- 0042: the only write path to profiles. `authenticated` holds no write
     -- grant on that table, so if this function goes missing the profile page
     -- fails shut rather than quietly falling back to a direct upsert.
     'public.save_profile(text,text,text)',
-    -- 0027: asserts what must NOT be reachable, next to selfcheck's what
+    -- 0042: asserts what must NOT be reachable, next to selfcheck's what
     -- must exist. Run by the bundle footer.
     'public.df20_grant_check()',
     'public.save_room_deck(text,text)',
@@ -5348,18 +5348,35 @@ declare
     'public.admin_library_remove(uuid)',
     'public.admin_activity()',
     'public.admin_recent_events(integer)',
-    'public.df20_log_billing_failure(text,text,text,text)'
+    'public.df20_log_billing_failure(text,text,text,text)',
+    'public.leave_room(text,uuid)',
+    -- v9: admin as a role, and the public handle
+    'public.df20_admin_count()',
+    'public.admin_set_admin(uuid,boolean)',
+    'public.admin_audit_log(integer)',
+    'public.df20_gen_handle()',
+    'public.set_my_handle(text)',
+    'public.my_handle()',
+    -- v10: the verification gate reaches billing and admin
+    'public.df20_email_verified(uuid)',
+    'public.my_verification()',
+    -- bot signals
+    'public.df20_record_signup(text,uuid,text,text,text,text,text)',
+    'public.admin_user_signals(text,text)'
   ];
   v_tables text[] := array['rooms','players','room_deck','room_pool','roster_entries',
                            'lots','bid_events','votes','rate_limits','category_library',
                            'category_library_items','category_library_aliases',
                            'wikipedia_cache','wikipedia_cache_items','profiles','templates',
                            'df20_config','user_categories','user_category_items',
-                           'audience_votes','billing_events'];
+                           'audience_votes','billing_events','signup_signals','disposable_domains','admin_audit'];
   v_columns text[] := array['profiles.premium_until','profiles.premium_source',
                             'profiles.subscription_status','profiles.stripe_customer_id',
                             'profiles.export_watermark','rooms.obs_token',
-                            'rooms.content_mode','billing_events.status'];
+                            'rooms.content_mode','billing_events.status',
+                            'rooms.abandoned_by','category_library.source',
+                            'wikipedia_cache.source','profiles.is_admin',
+                            'profiles.handle'];
   t text; c text;
 begin
   foreach f in array v_required loop
@@ -5411,9 +5428,1601 @@ begin
   end if;
 end $$;
 
--- ─────────── 0026_profiles_grant_hardening.sql ───────────
+-- ─────────── 0026_leave.sql ───────────
 
--- 0026_profiles_grant_hardening.sql
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · 0026 · leaving a draft
+--
+-- `abandoned` has been a legal value in rooms.status since 0001 and NOTHING
+-- HAS EVER SET IT. Closing the tab mid-draft left the other player watching a
+-- clock that would tick forever: expire_turn keeps resolving lots on their
+-- behalf, the deck keeps dealing, and the room only really ends when the
+-- 90-day purge deletes it.
+--
+-- This is the minimal honest version of leaving:
+--   · the room is marked abandoned, with WHO left and WHEN
+--   · any open lot is voided, so nobody is left on the clock
+--   · the state is broadcast, so the other client finds out immediately
+--
+-- Deliberately NOT here: no forfeit, no scoring, no winner. Somebody walking
+-- out is not a result, and inventing one would be inventing a rule the game
+-- does not have.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+alter table public.rooms
+  add column if not exists abandoned_by uuid references public.players(id) on delete set null,
+  add column if not exists abandoned_at timestamptz;
+
+create or replace function public.leave_room(p_code text, p_token uuid)
+returns jsonb language plpgsql security definer
+set search_path = public, pg_temp as $$
+declare v_room public.rooms; v_me public.players;
+begin
+  select * into v_room from public.rooms where code = upper(btrim(p_code)) for update;
+  if not found then raise exception 'DF20_NO_ROOM'; end if;
+
+  select * into v_me from public.players
+   where room_id = v_room.id and session_token = p_token;
+  if not found then raise exception 'DF20_BAD_TOKEN'; end if;
+
+  -- a finished draft has nothing left to abandon; leaving is just navigation
+  if v_room.status = 'complete' then
+    return jsonb_build_object('status', 'complete', 'left', false);
+  end if;
+  if v_room.status = 'abandoned' then
+    return jsonb_build_object('status', 'abandoned', 'left', false);
+  end if;
+
+  -- nobody should be sitting on a clock in a room that is over
+  update public.lots
+     set status = 'void', on_the_clock_player_id = null,
+         turn_expires_at = null, resolved_at = now()
+   where room_id = v_room.id and status in ('offered','bidding');
+
+  update public.rooms
+     set status = 'abandoned',
+         phase = 'complete',
+         abandoned_by = v_me.id,
+         abandoned_at = now(),
+         completed_at = coalesce(completed_at, now())
+   where id = v_room.id;
+
+  perform public.df20_touch(v_room.id);
+  perform public.df20_broadcast(v_room.id);
+
+  return jsonb_build_object('status', 'abandoned', 'left', true,
+                            'by', v_me.display_name);
+end $$;
+grant execute on function public.leave_room(text, uuid) to anon, authenticated;
+
+-- ─────────── 0027_provenance.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · 0027 · where a library category came from
+--
+-- category_library has never recorded its own provenance, and that is what
+-- made the cache re-filtering question unanswerable last time: a hand-curated
+-- shelf entry and a parsed Wikipedia list are the same row shape, so any bulk
+-- re-filter would have gutted the curated ones along with the junk.
+--
+-- DELIBERATELY NOT BACKFILLED. Every row that exists right now stays null,
+-- because the honest answer for them is "unknown" and a guess would be worse
+-- than a blank — the whole point of the column is to be trustworthy enough to
+-- run destructive bulk operations against.
+--
+-- wikipedia_cache also learns a source, so the Wikidata step can share the
+-- one cache table rather than standing up a parallel one.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+alter table public.category_library
+  add column if not exists source text;
+
+do $$ begin
+  alter table public.category_library add constraint category_library_source_chk
+    check (source is null or source in
+           ('admin_curated','wikipedia_cache','wikidata_cache','user_submitted'));
+exception when duplicate_object then null; end $$;
+
+comment on column public.category_library.source is
+  'How this entry was created. NULL means it predates 0027 and is genuinely '
+  'unknown — never guess, and never treat NULL as any particular source.';
+
+-- ── the shared cache learns which service answered ────────────────────────
+alter table public.wikipedia_cache
+  add column if not exists source text not null default 'wikipedia',
+  add column if not exists entity_id text;          -- the Wikidata Q-id, when it was Wikidata
+
+do $$ begin
+  alter table public.wikipedia_cache add constraint wikipedia_cache_source_chk
+    check (source in ('wikipedia','wikidata'));
+exception when duplicate_object then null; end $$;
+
+-- ── df20_seed_category is deliberately NOT touched ────────────────────────
+-- Adding a defaulted third parameter to it creates a second overload, and
+-- 0011 both defines the two-argument version AND calls it, as does 0014. On
+-- the second run of this bundle the old arity is recreated beside the new one
+-- and 0011's own seed calls become "function is not unique" — the bundle dies
+-- halfway through, which is precisely the re-runnability rule this project
+-- lives by. Curated lists get their provenance from the admin path that
+-- writes the column directly, not from the shared seed helper.
+
+-- ── the moderation queue publishes USER SUBMISSIONS ───────────────────────
+-- Same body as 0024 apart from the one column: a host opting their list into
+-- the public shelf is the user_submitted path by definition.
+create or replace function public.admin_review_library(p_room uuid, p_approve boolean)
+returns jsonb language plpgsql security definer
+set search_path = public, pg_temp as $$
+declare v_room public.rooms; v_id uuid; v_n int;
+begin
+  if not public.df20_is_admin() then raise exception 'DF20_NOT_AUTHORISED'; end if;
+
+  select * into v_room from public.rooms where id = p_room for update;
+  if not found then raise exception 'DF20_NO_ROOM'; end if;
+  if v_room.library_optin_state <> 'pending' then
+    return jsonb_build_object('status', v_room.library_optin_state);
+  end if;
+
+  if not coalesce(p_approve, false) then
+    update public.rooms set library_optin_state = 'rejected' where id = p_room;
+    return jsonb_build_object('status','rejected');
+  end if;
+
+  insert into public.category_library (name, name_norm, source)
+  values (v_room.category_name, public.df20_norm_category(v_room.category_name),
+          'user_submitted')
+  on conflict (name_norm) do nothing
+  returning id into v_id;
+
+  if v_id is null then
+    update public.rooms set library_optin_state = 'rejected' where id = p_room;
+    return jsonb_build_object('status','already_exists');
+  end if;
+
+  insert into public.category_library_items (library_id, name)
+  select v_id, name from public.room_pool where room_id = p_room
+  on conflict do nothing;
+
+  select count(*) into v_n from public.category_library_items where library_id = v_id;
+  update public.rooms set library_optin_state = 'accepted' where id = p_room;
+  return jsonb_build_object('status','accepted', 'library_id', v_id, 'item_count', v_n);
+end $$;
+grant execute on function public.admin_review_library(uuid, boolean) to authenticated;
+
+-- ── caching a lookup, whichever service answered ──────────────────────────
+-- 0010 defines the four-argument version and this adds two defaulted ones,
+-- which would leave two overloads standing. Nothing calls it with four
+-- arguments — only the resolve route calls it at all, now with six — so the
+-- old signature is dropped here, AFTER 0010 has recreated it on this run.
+-- That ordering is what keeps the bundle re-runnable.
+drop function if exists public.df20_cache_wikipedia(text, text, text, text[]);
+
+create or replace function public.df20_cache_wikipedia(
+  p_secret text, p_query text, p_title text, p_items text[],
+  p_source text default 'wikipedia', p_entity_id text default null
+) returns jsonb language plpgsql security definer
+set search_path = public, pg_temp as $$
+declare v_q text; v_id uuid; v_n int; s text; v_clean text; v_expected text;
+begin
+  select value into v_expected from public.df20_config where key = 'wiki_write_secret';
+  if v_expected is null or p_secret is null or p_secret <> v_expected then
+    raise exception 'DF20_NOT_AUTHORISED';
+  end if;
+  if coalesce(p_source, 'wikipedia') not in ('wikipedia','wikidata') then
+    raise exception 'DF20_BAD_SOURCE';
+  end if;
+
+  v_q := public.df20_norm_category(p_query);
+  if length(v_q) = 0 then raise exception 'DF20_BAD_CATEGORY'; end if;
+
+  insert into public.wikipedia_cache (query_norm, article_title, source, entity_id)
+  values (v_q, public.df20_clean_text(p_title, 120),
+          coalesce(p_source, 'wikipedia'), p_entity_id)
+  on conflict (query_norm) do update set article_title = excluded.article_title,
+                                         source = excluded.source,
+                                         entity_id = excluded.entity_id,
+                                         fetched_at = now()
+  returning id into v_id;
+
+  delete from public.wikipedia_cache_items where cache_id = v_id;
+  foreach s in array coalesce(p_items, '{}'::text[]) loop
+    v_clean := public.df20_clean_text(s, 60);
+    if length(v_clean) >= 2 then
+      insert into public.wikipedia_cache_items (cache_id, name)
+      values (v_id, v_clean) on conflict do nothing;
+    end if;
+  end loop;
+
+  select count(*) into v_n from public.wikipedia_cache_items where cache_id = v_id;
+  return jsonb_build_object('source', coalesce(p_source, 'wikipedia'),
+                            'source_id', v_id, 'name', p_title, 'item_count', v_n);
+end $$;
+grant execute on function public.df20_cache_wikipedia(text,text,text,text[],text,text)
+  to anon, authenticated;
+
+-- ─────────── 0028_admin_roles.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · 0028 · admin as a role, not a config string
+--
+-- Admin has been a comma-separated list of uuids in df20_config since 0019.
+-- That was fine for one person editing a table by hand and is wrong for a UI
+-- toggle: string surgery to revoke, no way to count admins, nowhere to record
+-- who did it.
+--
+-- This moves the truth to profiles.is_admin and BACKFILLS from the config row
+-- — a backfill that is safe precisely because the source is known and exact,
+-- unlike the provenance column in 0027 which was left null for that reason.
+--
+-- df20_is_admin() accepts EITHER source afterwards. That is deliberate: if the
+-- backfill misses for any reason, the operator is not locked out of the panel
+-- that grants admin, which is the one lockout with no way back.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+alter table public.profiles
+  add column if not exists is_admin boolean not null default false;
+
+-- carry the existing admins across
+update public.profiles p
+   set is_admin = true
+  from public.df20_config c,
+       lateral unnest(string_to_array(c.value, ',')) u
+ where c.key = 'admin_user_ids'
+   and btrim(u) = p.id::text
+   and p.is_admin = false;
+
+create index if not exists profiles_is_admin_idx on public.profiles(id) where is_admin;
+
+-- ── a permission this sensitive gets a paper trail ────────────────────────
+-- Nothing general-purpose existed to log into: billing_events is billing.
+-- Five columns is not new infrastructure, and "who made whom an admin" is not
+-- a question to answer from memory.
+create table if not exists public.admin_audit (
+  id         bigserial primary key,
+  actor_id   uuid references public.profiles(id) on delete set null,
+  action     text not null,
+  target_id  uuid references public.profiles(id) on delete set null,
+  detail     text,
+  at         timestamptz not null default now()
+);
+create index if not exists admin_audit_at_idx on public.admin_audit(at desc);
+alter table public.admin_audit enable row level security;
+revoke all on public.admin_audit from anon, authenticated;
+
+-- ── either source counts ──────────────────────────────────────────────────
+create or replace function public.df20_is_admin()
+returns boolean language sql stable security definer
+set search_path = public, pg_temp as $$
+  select (select auth.uid()) is not null
+     and (
+       exists (select 1 from public.profiles p
+                where p.id = (select auth.uid()) and p.is_admin)
+       or exists (select 1 from public.df20_config c,
+                       lateral unnest(string_to_array(c.value, ',')) u
+                   where c.key = 'admin_user_ids'
+                     and btrim(u) = (select auth.uid())::text)
+     )
+$$;
+grant execute on function public.df20_is_admin() to anon, authenticated;
+
+-- how many admins would remain if this one were removed
+create or replace function public.df20_admin_count()
+returns int language sql stable security definer
+set search_path = public, pg_temp as $$
+  select count(distinct id)::int from (
+    select p.id from public.profiles p where p.is_admin
+    union
+    select p.id from public.profiles p, public.df20_config c,
+           lateral unnest(string_to_array(c.value, ',')) u
+     where c.key = 'admin_user_ids' and btrim(u) = p.id::text
+  ) s
+$$;
+revoke all on function public.df20_admin_count() from anon, authenticated;
+
+-- ── grant and revoke ──────────────────────────────────────────────────────
+create or replace function public.admin_set_admin(p_user_id uuid, p_grant boolean)
+returns jsonb language plpgsql security definer
+set search_path = public, pg_temp as $$
+declare v_actor uuid; v_target public.profiles; v_remaining int; v_legacy boolean;
+begin
+  -- server-side, because hiding a button is not a permission check
+  if not public.df20_is_admin() then raise exception 'DF20_NOT_AUTHORISED'; end if;
+  v_actor := auth.uid();
+
+  select * into v_target from public.profiles where id = p_user_id for update;
+  if not found then raise exception 'DF20_NO_SUCH_USER'; end if;
+
+  if coalesce(p_grant, false) then
+    update public.profiles set is_admin = true, updated_at = now() where id = p_user_id;
+    insert into public.admin_audit (actor_id, action, target_id, detail)
+    values (v_actor, 'admin_granted', p_user_id, v_target.email);
+    return jsonb_build_object('user_id', p_user_id, 'is_admin', true);
+  end if;
+
+  -- THE LAST ADMIN CANNOT BE REMOVED. An app with zero admins has no way
+  -- back in through its own UI; the only repair is a hand-edit in the
+  -- Supabase table editor, which is exactly what this feature replaced.
+  v_remaining := public.df20_admin_count();
+  if v_remaining <= 1 then
+    raise exception 'DF20_LAST_ADMIN';
+  end if;
+
+  update public.profiles set is_admin = false, updated_at = now() where id = p_user_id;
+
+  -- a uuid left in the legacy config row would silently re-grant on the next
+  -- df20_is_admin() call, so revoking has to clear both sources
+  select exists (select 1 from public.df20_config c,
+                      lateral unnest(string_to_array(c.value, ',')) u
+                  where c.key = 'admin_user_ids' and btrim(u) = p_user_id::text)
+    into v_legacy;
+  if v_legacy then
+    update public.df20_config
+       set value = coalesce((select string_agg(btrim(u), ',')
+                               from unnest(string_to_array(value, ',')) u
+                              where btrim(u) <> p_user_id::text and btrim(u) <> ''), '')
+     where key = 'admin_user_ids';
+    -- string_agg over an empty set is NULL, and value is NOT NULL. Removing
+    -- the only listed uuid therefore has to remove the row, which is also the
+    -- documented "row absent means nobody is an admin" state rather than an
+    -- empty string nobody expects.
+    delete from public.df20_config where key = 'admin_user_ids' and btrim(value) = '';
+  end if;
+
+  insert into public.admin_audit (actor_id, action, target_id, detail)
+  values (v_actor, 'admin_revoked', p_user_id,
+          v_target.email || case when v_legacy then ' (also cleared from df20_config)' else '' end);
+
+  return jsonb_build_object('user_id', p_user_id, 'is_admin', false);
+end $$;
+grant execute on function public.admin_set_admin(uuid, boolean) to authenticated;
+
+-- ── the audit trail, readable by admins ───────────────────────────────────
+create or replace function public.admin_audit_log(p_limit int default 50)
+returns jsonb language plpgsql stable security definer
+set search_path = public, pg_temp as $$
+begin
+  if not public.df20_is_admin() then raise exception 'DF20_NOT_AUTHORISED'; end if;
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+             'at', a.at, 'action', a.action, 'detail', a.detail,
+             'actor', (select coalesce(x.display_name, x.email, x.id::text)
+                         from public.profiles x where x.id = a.actor_id),
+             'target', (select coalesce(x.display_name, x.email, x.id::text)
+                          from public.profiles x where x.id = a.target_id))
+           order by a.at desc)
+      from (select * from public.admin_audit
+             order by at desc
+             limit least(greatest(coalesce(p_limit, 50), 1), 200)) a), '[]'::jsonb);
+end $$;
+grant execute on function public.admin_audit_log(int) to authenticated;
+
+
+-- ─────────── 0029_handles.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · 0029 · a public handle that is not an email address
+--
+-- profiles.email is the login credential and has been standing in as the
+-- display identity, which means any surface that names an account leaks one.
+-- This adds a handle that is safe to show.
+--
+-- GENERATED, NOT CHOSEN, at creation. A chosen handle needs a uniqueness
+-- check inside the signup flow, a taken-name error state, and a decision
+-- about what happens when someone abandons signup halfway — for a value whose
+-- only job today is "something to display instead of an email". Everyone gets
+-- one immediately, and set_my_handle() lets anyone who cares pick their own
+-- afterwards, with the validation in one place rather than in the signup path.
+--
+-- admin_list_profiles is redefined HERE, not in 0028, because it reads this
+-- column: a caller and its dependency in different files is the failure 0013
+-- exists to prevent.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+alter table public.profiles
+  add column if not exists handle text;
+
+create unique index if not exists profiles_handle_idx
+  on public.profiles(lower(handle)) where handle is not null;
+
+-- no i/l/o/0/1: a handle gets read aloud and typed back in
+create or replace function public.df20_gen_handle()
+returns text language plpgsql security definer
+set search_path = public, pg_temp as $$
+declare a text := 'abcdefghjkmnpqrstuvwxyz23456789'; v text; i int;
+begin
+  loop
+    v := '';
+    for i in 1..8 loop
+      v := v || substr(a, 1 + floor(random() * length(a))::int, 1);
+    end loop;
+    exit when not exists (select 1 from public.profiles where lower(handle) = v);
+  end loop;
+  return v;
+end $$;
+revoke all on function public.df20_gen_handle() from anon, authenticated;
+
+-- everyone who already has an account gets one now
+do $$
+declare r record;
+begin
+  for r in select id from public.profiles where handle is null loop
+    update public.profiles set handle = public.df20_gen_handle() where id = r.id;
+  end loop;
+end $$;
+
+-- ── every new account gets one at creation ────────────────────────────────
+-- Same body as 0015 plus the handle. Still never a reason to refuse a room:
+-- a handle that cannot be minted leaves the column null rather than raising.
+create or replace function public.df20_ensure_profile()
+returns uuid language plpgsql security definer
+set search_path = public, pg_temp as $$
+declare v_uid uuid; v_email text;
+begin
+  v_uid := auth.uid();
+  if v_uid is null then return null; end if;
+  begin
+    select u.email into v_email from auth.users u where u.id = v_uid;
+  exception when others then v_email := null;
+  end;
+
+  insert into public.profiles (id, email, handle)
+  values (v_uid, v_email, public.df20_gen_handle())
+  on conflict (id) do nothing;
+
+  -- an account that predates this column, or one whose insert raced
+  update public.profiles set handle = public.df20_gen_handle()
+   where id = v_uid and handle is null;
+
+  return v_uid;
+end $$;
+revoke all on function public.df20_ensure_profile() from anon, authenticated;
+
+-- ── or pick your own ──────────────────────────────────────────────────────
+create or replace function public.set_my_handle(p_handle text)
+returns jsonb language plpgsql security definer
+set search_path = public, pg_temp as $$
+declare v_uid uuid; v_h text;
+begin
+  v_uid := public.df20_ensure_profile();
+  if v_uid is null then raise exception 'DF20_SIGNIN_REQUIRED'; end if;
+
+  v_h := lower(btrim(coalesce(p_handle, '')));
+  if v_h !~ '^[a-z0-9_-]{3,20}$' then raise exception 'DF20_BAD_HANDLE'; end if;
+  -- words that would let one account be mistaken for the service itself
+  if v_h ~ '^(admin|administrator|draftfor20|df20|support|help|root|system|mod|moderator|staff|official)$'
+    then raise exception 'DF20_RESERVED_HANDLE'; end if;
+
+  if exists (select 1 from public.profiles
+              where lower(handle) = v_h and id <> v_uid) then
+    raise exception 'DF20_HANDLE_TAKEN';
+  end if;
+
+  update public.profiles set handle = v_h, updated_at = now() where id = v_uid;
+  return jsonb_build_object('handle', v_h);
+end $$;
+grant execute on function public.set_my_handle(text) to authenticated;
+
+-- ── the admin table, now with the handle and the admin flag ───────────────
+create or replace function public.admin_list_profiles(p_query text default null)
+returns jsonb language plpgsql stable security definer
+set search_path = public, pg_temp as $$
+declare v_q text;
+begin
+  if not public.df20_is_admin() then raise exception 'DF20_NOT_AUTHORISED'; end if;
+  v_q := lower(btrim(coalesce(p_query, '')));
+
+  return coalesce((
+    select jsonb_agg(x order by x->>'created_at' desc) from (
+      select jsonb_build_object(
+               'id', p.id, 'email', p.email, 'display_name', p.display_name,
+               'handle', p.handle, 'created_at', p.created_at,
+               'premium_until', p.premium_until,
+               'premium_source', p.premium_source,
+               'subscription_status', p.subscription_status,
+               'active', coalesce(p.premium_until > now(), false),
+               'is_admin', p.is_admin,
+               'hosted', (select count(*) from public.rooms r
+                           where r.host_profile_id = p.id and r.code is not null
+                             and r.status in ('live','complete')),
+               'played', (select count(distinct pl.room_id) from public.players pl
+                           where pl.profile_id = p.id),
+               'last_seat', (select max(pl.created_at) from public.players pl
+                              where pl.profile_id = p.id),
+               'decks', (select count(*) from public.user_categories c
+                          where c.owner_id = p.id)) as x
+        from public.profiles p
+       where v_q = ''
+          or lower(coalesce(p.email, '')) like '%' || v_q || '%'
+          or lower(coalesce(p.display_name, '')) like '%' || v_q || '%'
+          or lower(coalesce(p.handle, '')) like '%' || v_q || '%'
+       order by p.created_at desc
+       limit 200) s), '[]'::jsonb);
+end $$;
+grant execute on function public.admin_list_profiles(text) to authenticated;
+
+-- ── the owner sees their own handle ───────────────────────────────────────
+create or replace function public.my_handle()
+returns jsonb language sql stable security definer
+set search_path = public, pg_temp as $$
+  select jsonb_build_object('handle', (select handle from public.profiles
+                                        where id = (select auth.uid())))
+$$;
+grant execute on function public.my_handle() to authenticated;
+
+-- ─────────── 0030_verify_gates.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · 0030 · the verification gate reaches the paths it claimed to
+--
+-- 0016 added df20_require_verified() and wired it to the custom-category
+-- paths. It was never wired to the other two things the policy names:
+--
+--   custom categories  gated since 0016          ✓
+--   premium purchase   never checked             ✗
+--   admin functions    never checked             ✗
+--
+-- Both are fixed here. df20_is_admin() gaining a verification requirement is
+-- the risky one — it is the check that guards the panel used to grant admin —
+-- so the helper is DEFENSIVE in exactly the way 0016 is: an auth.users row it
+-- cannot read counts as verified. The only way to lose admin is an explicit
+-- null email_confirmed_at, never a permissions hiccup reading the table.
+--
+-- NOTE FOR WHOEVER READS THIS NEXT: with the project's "Confirm email"
+-- setting OFF, Supabase stamps email_confirmed_at at signup and every check
+-- here passes for everyone. These gates only start biting once that setting
+-- is turned on in the dashboard. The code cannot turn it on.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+create or replace function public.df20_email_verified(p_uid uuid)
+returns boolean language plpgsql stable security definer
+set search_path = public, pg_temp as $$
+declare v_confirmed timestamptz;
+begin
+  if p_uid is null then return false; end if;
+  begin
+    select u.email_confirmed_at into v_confirmed from auth.users u where u.id = p_uid;
+  exception when others then
+    return true;   -- column or table unreadable: do not invent a lockout
+  end;
+  return v_confirmed is not null;
+end $$;
+revoke all on function public.df20_email_verified(uuid) from anon, authenticated;
+
+-- ── admin now requires a confirmed address ────────────────────────────────
+create or replace function public.df20_is_admin()
+returns boolean language sql stable security definer
+set search_path = public, pg_temp as $$
+  select (select auth.uid()) is not null
+     and public.df20_email_verified((select auth.uid()))
+     and (
+       exists (select 1 from public.profiles p
+                where p.id = (select auth.uid()) and p.is_admin)
+       or exists (select 1 from public.df20_config c,
+                       lateral unnest(string_to_array(c.value, ',')) u
+                   where c.key = 'admin_user_ids'
+                     and btrim(u) = (select auth.uid())::text)
+     )
+$$;
+grant execute on function public.df20_is_admin() to anon, authenticated;
+
+-- ── what the billing route asks before it opens a checkout session ───────
+-- Answered here rather than read off the JWT so there is one definition of
+-- "verified" in the system, and it is the database's.
+create or replace function public.my_verification()
+returns jsonb language plpgsql stable security definer
+set search_path = public, pg_temp as $$
+declare v_uid uuid;
+begin
+  v_uid := auth.uid();
+  if v_uid is null then
+    return jsonb_build_object('signed_in', false, 'verified', false);
+  end if;
+  return jsonb_build_object('signed_in', true,
+                            'verified', public.df20_email_verified(v_uid));
+end $$;
+grant execute on function public.my_verification() to anon, authenticated;
+
+-- ─────────── 0031_lock_handle.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · 0031 · the user ID is assigned, not chosen
+--
+-- 0029 let an account rename its own handle. That is now the wrong shape: it
+-- is a USER ID, it identifies the account wherever an email must not appear,
+-- and an identifier people can swap around is a poor one — it breaks any
+-- reference anybody wrote down.
+--
+-- Enforced by removing the grant rather than hiding the button, because the
+-- anon key is public and set_my_handle was reachable with curl. The function
+-- itself stays: it is how an operator fixes a genuinely bad handle from the
+-- SQL editor, which is the only place that should be possible.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- PUBLIC holds EXECUTE on every function by default, so revoking from anon
+-- and authenticated alone changes nothing — the privilege comes in through
+-- PUBLIC. That default grant is the one that has to go.
+revoke all on function public.set_my_handle(text) from public;
+revoke all on function public.set_my_handle(text) from anon, authenticated;
+
+comment on function public.set_my_handle(text) is
+  'Operator-only since 0031. The handle is a user ID: assigned at signup and '
+  'not user-changeable. Callable from the SQL editor to correct one by hand.';
+
+-- ─────────── 0032_profile_on_signup.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · 0032 · a profile exists from the moment the account does
+--
+-- THE BUG THIS FIXES, which had two faces:
+--
+--   profiles rows were only ever created by df20_ensure_profile(), and that
+--   runs on create_room / join_room / save_* — things a person DOES. Signing
+--   up created an auth.users row and nothing else. So an account that signed
+--   up and went straight to checkout had no profile, and:
+--
+--     · admin_list_profiles reads profiles, so it never saw them
+--     · df20_apply_billing_event looks the buyer up in profiles, found
+--       nothing, returned {matched:false} and wrote NOTHING — Stripe took
+--       the money and the grant silently never happened
+--
+-- The trigger is the real fix. The backfill catches everyone already in that
+-- state. The webhook change is belt and braces: taking money and writing
+-- nothing is the one failure this system must not have, so it now creates the
+-- profile itself rather than shrugging, and records a failure when it truly
+-- cannot identify the buyer.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- ── 1. every new account gets a profile, immediately ──────────────────────
+create or replace function public.df20_on_auth_user_created()
+returns trigger language plpgsql security definer
+set search_path = public, pg_temp as $$
+begin
+  insert into public.profiles (id, email, handle)
+  values (new.id, new.email, public.df20_gen_handle())
+  on conflict (id) do nothing;
+  return new;
+exception when others then
+  -- a profile that cannot be written must never block the signup itself;
+  -- df20_ensure_profile() still backstops on the next authenticated action
+  return new;
+end $$;
+
+drop trigger if exists df20_on_auth_user_created on auth.users;
+
+do $$
+begin
+  create trigger df20_on_auth_user_created
+    after insert on auth.users
+    for each row execute function public.df20_on_auth_user_created();
+  raise notice 'trigger installed: every new account now gets a profile row';
+exception when insufficient_privilege then
+  raise exception
+    'DF20_TRIGGER_DENIED: could not create the trigger on auth.users. Run this '
+    'migration from the Supabase SQL editor (which runs as postgres), not from '
+    'a pooled application connection.';
+end $$;
+
+-- ── 2. everyone already stranded without one ──────────────────────────────
+do $$
+declare v_n int;
+begin
+  insert into public.profiles (id, email, handle)
+  select u.id, u.email, public.df20_gen_handle()
+    from auth.users u
+    left join public.profiles p on p.id = u.id
+   where p.id is null
+  on conflict (id) do nothing;
+  get diagnostics v_n = row_count;
+  raise notice 'backfilled % account(s) that had no profile row', v_n;
+end $$;
+
+-- any profile that predates the handle column still needs one
+update public.profiles
+   set handle = public.df20_gen_handle()
+ where handle is null;
+
+-- ── 3. the webhook stops being able to fail silently ──────────────────────
+create or replace function public.df20_apply_billing_event(
+  p_secret          text,
+  p_event_id        text,
+  p_user_id         uuid,
+  p_customer_id     text,
+  p_subscription_id text,
+  p_status          text,
+  p_premium_until   timestamptz,
+  p_source          text,
+  p_extend_hours    int default null
+) returns jsonb language plpgsql security definer
+set search_path = public, pg_temp as $$
+declare v_expected text; v_id uuid; v_until timestamptz; v_rows int;
+begin
+  select value into v_expected from public.df20_config where key = 'billing_write_secret';
+  if v_expected is null or p_secret is null or p_secret <> v_expected then
+    raise exception 'DF20_NOT_AUTHORISED';
+  end if;
+
+  if p_source is not null and p_source not in
+     ('stripe_subscription','admin_grant','game_night_pass') then
+    raise exception 'DF20_BAD_SOURCE';
+  end if;
+
+  if p_user_id is not null then
+    select id into v_id from public.profiles where id = p_user_id;
+  end if;
+  if v_id is null and p_customer_id is not null then
+    select id into v_id from public.profiles where stripe_customer_id = p_customer_id;
+  end if;
+
+  -- Checkout carried a real account id but no profile row exists for it.
+  -- Create it: somebody has paid, and refusing to record that because a row
+  -- is missing is how money goes missing.
+  if v_id is null and p_user_id is not null
+     and exists (select 1 from auth.users u where u.id = p_user_id) then
+    insert into public.profiles (id, email, handle)
+    select u.id, u.email, public.df20_gen_handle()
+      from auth.users u where u.id = p_user_id
+    on conflict (id) do nothing;
+    select id into v_id from public.profiles where id = p_user_id;
+  end if;
+
+  if v_id is null then
+    -- genuinely cannot tell who paid. Record it so it surfaces in the console
+    -- instead of vanishing into a 200 nobody reads.
+    if p_event_id is not null then
+      insert into public.billing_events (event_id, kind, status, detail)
+      values (p_event_id, coalesce(p_source, 'stripe'), 'failed',
+              'no profile matched: user_id=' || coalesce(p_user_id::text, 'null')
+              || ' customer=' || coalesce(p_customer_id, 'null'))
+      on conflict (event_id) do update
+        set status = 'failed', detail = excluded.detail, processed_at = now();
+    end if;
+    return jsonb_build_object('matched', false);
+  end if;
+
+  if p_event_id is not null then
+    insert into public.billing_events (event_id, kind)
+    values (p_event_id, coalesce(p_source, 'stripe'))
+    on conflict (event_id) do nothing;
+    get diagnostics v_rows = row_count;
+    if v_rows = 0 then
+      return jsonb_build_object('matched', true, 'duplicate', true);
+    end if;
+  end if;
+
+  if p_extend_hours is not null then
+    select greatest(coalesce(premium_until, now()), now())
+             + make_interval(hours => p_extend_hours)
+      into v_until from public.profiles where id = v_id;
+  else
+    v_until := p_premium_until;
+  end if;
+
+  update public.profiles
+     set premium_until          = coalesce(v_until, premium_until),
+         premium_source         = coalesce(p_source, premium_source),
+         subscription_status    = coalesce(p_status, subscription_status),
+         stripe_customer_id     = coalesce(p_customer_id, stripe_customer_id),
+         stripe_subscription_id = coalesce(p_subscription_id, stripe_subscription_id),
+         updated_at             = now()
+   where id = v_id;
+
+  return jsonb_build_object('matched', true, 'user_id', v_id,
+                            'premium_until', to_jsonb(v_until));
+end $$;
+revoke all on function public.df20_apply_billing_event(text,text,uuid,text,text,text,timestamptz,text,int)
+  from public;
+revoke all on function public.df20_apply_billing_event(text,text,uuid,text,text,text,timestamptz,text,int)
+  from anon, authenticated;
+
+-- ─────────── 0033_premium_line.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · 0033 · free is the shelf, everything else is premium
+--
+-- The line moves. Previously custom categories cost an account and the
+-- audience vote was free on purpose (it is the acquisition loop). Both are
+-- now premium, by decision.
+--
+--   FREE      the premade shelf: builtin and library pools, signed in or not.
+--             Playing, the results card, the watermarked PNG, joining a room.
+--   PREMIUM   any pool the host supplies — typed (wikipedia), handed off
+--             (manual), or reused (saved) — Content Creator rooms, the OBS
+--             source, record mode, card branding, the full scouting report,
+--             and now the audience vote.
+--
+-- Gated HERE, not in the UI. A padlock in React is decoration; the anon key
+-- is public and every one of these RPCs is reachable with curl.
+--
+-- The audience vote checks the HOST's premium, not the voter's. Voters are
+-- strangers with no account and never need one — the feature belongs to the
+-- person who ran the draft.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+create or replace function public.create_room(
+  p_title text, p_roster_size int, p_bankroll_cents int, p_min_bid_cents int,
+  p_timer_seconds int, p_host_name text, p_is_private boolean default true,
+  p_gives_per_player int default 2, p_brand_accent text default null,
+  p_brand_logo_url text default null,
+  p_pool_source text default 'builtin', p_pool_ref uuid default null,
+  p_content_mode text default 'standard'
+) returns jsonb language plpgsql security definer
+set search_path = public, pg_temp as $$
+declare v_room public.rooms; v_pl public.players; v_uid uuid; v_accent text; v_n int;
+begin
+  if coalesce(p_pool_source, 'builtin') in ('wikipedia','saved') then
+    v_uid := public.df20_require_verified();
+  else
+    v_uid := public.df20_ensure_profile();   -- null when signed out, which is fine
+  end if;
+
+  if coalesce(p_pool_source, 'builtin') = 'saved' then
+    if not exists (select 1 from public.user_categories
+                    where id = p_pool_ref and owner_id = v_uid) then
+      raise exception 'DF20_NOT_YOUR_DECK';
+    end if;
+  end if;
+
+  -- FREE IS THE SHELF. builtin and library stay open to everyone, signed in
+  -- or not; anything the host supplies themselves is premium.
+  if coalesce(p_pool_source, 'builtin') not in ('builtin', 'library')
+     and (v_uid is null or not public.df20_premium_active(v_uid)) then
+    raise exception 'DF20_PREMIUM_REQUIRED';
+  end if;
+
+  -- CONTENT CREATOR is chosen here, at creation, and never changes. The
+  -- room's whole layout is decided by this column, so letting it be flipped
+  -- mid-draft would mean re-laying-out a board somebody is streaming.
+  p_content_mode := coalesce(nullif(btrim(lower(p_content_mode)), ''), 'standard');
+  if p_content_mode not in ('standard', 'creator') then
+    raise exception 'DF20_BAD_CONTENT_MODE';
+  end if;
+  if p_content_mode = 'creator'
+     and (v_uid is null or not public.df20_premium_active(v_uid)) then
+    raise exception 'DF20_PREMIUM_REQUIRED';
+  end if;
+
+  p_title := public.df20_clean_text(p_title, 60);
+  if length(p_title) = 0 then p_title := 'Football Draft'; end if;
+  p_host_name := public.df20_clean_text(p_host_name, 24);
+  if length(p_host_name) = 0 then raise exception 'DF20_BAD_NAME'; end if;
+
+  if p_roster_size is null or p_roster_size < 1 or p_roster_size > 30
+    then raise exception 'DF20_BAD_ROSTER_SIZE'; end if;
+  if p_bankroll_cents is null or p_bankroll_cents < 0 or p_bankroll_cents > 10000000
+    then raise exception 'DF20_BAD_BANKROLL'; end if;
+  if p_min_bid_cents is null or p_min_bid_cents < 0 or p_min_bid_cents > 1000000
+    then raise exception 'DF20_BAD_MIN_BID'; end if;
+  -- 0 is the no-limit sentinel; 1 and 2 seconds are still nonsense
+  if p_timer_seconds is null
+     or not (p_timer_seconds = 0 or p_timer_seconds between 3 and 300)
+    then raise exception 'DF20_BAD_TIMER'; end if;
+  if p_gives_per_player is null or p_gives_per_player < 0 or p_gives_per_player > 30
+    then raise exception 'DF20_BAD_GIVES'; end if;
+
+  v_accent := public.df20_clean_text(p_brand_accent, 9);
+  if v_accent = '' then v_accent := null; end if;
+  if v_accent is not null and v_accent !~ '^#[0-9A-Fa-f]{6}$'
+    then raise exception 'DF20_BAD_ACCENT'; end if;
+
+  insert into public.rooms (code, title, roster_size, starting_bankroll_cents,
+                            min_bid_cents, timer_seconds, gives_per_player,
+                            is_private, brand_accent, brand_logo_url, host_profile_id,
+                            content_mode)
+  values (public.df20_gen_code(), p_title, p_roster_size, p_bankroll_cents,
+          p_min_bid_cents, p_timer_seconds, p_gives_per_player,
+          coalesce(p_is_private, true), v_accent,
+          public.df20_clean_logo_url(p_brand_logo_url), v_uid,
+          p_content_mode)
+  returning * into v_room;
+
+  v_n := public.df20_fill_pool(v_room.id, coalesce(p_pool_source, 'builtin'), p_pool_ref);
+  if v_n < p_roster_size * 2 then raise exception 'DF20_POOL_TOO_SMALL'; end if;
+
+  insert into public.players (room_id, seat, display_name, bankroll_cents, is_host, profile_id)
+  values (v_room.id, 1, p_host_name, p_bankroll_cents, true, v_uid)
+  returning * into v_pl;
+
+  return jsonb_build_object('room_id', v_room.id, 'code', v_room.code,
+                            'player_id', v_pl.id, 'session_token', v_pl.session_token,
+                            'seat', 1, 'pool_size', v_n,
+                            'content_mode', v_room.content_mode);
+end $$;
+
+create or replace function public.create_pending_room(p_content_mode text default 'standard')
+returns jsonb language plpgsql security definer
+set search_path = public, pg_temp as $$
+declare v_room public.rooms; v_uid uuid;
+begin
+  v_uid := public.df20_require_verified();
+
+  if not public.df20_rate_limit('pending_room', v_uid::text, 20, 3600) then
+    raise exception 'DF20_RATE_LIMITED';
+  end if;
+
+  p_content_mode := coalesce(nullif(btrim(lower(p_content_mode)), ''), 'standard');
+  if p_content_mode not in ('standard', 'creator') then
+    raise exception 'DF20_BAD_CONTENT_MODE';
+  end if;
+  if p_content_mode = 'creator' and not public.df20_premium_active(v_uid) then
+    raise exception 'DF20_PREMIUM_REQUIRED';
+  end if;
+
+  -- a setup link exists to build a category by hand, which is the premium
+  -- path whatever mode the room is in
+  if not public.df20_premium_active(v_uid) then
+    raise exception 'DF20_PREMIUM_REQUIRED';
+  end if;
+
+  insert into public.rooms (code, title, roster_size, starting_bankroll_cents,
+                            min_bid_cents, timer_seconds, host_profile_id,
+                            setup_token, setup_expires_at, pool_source, content_mode)
+  values (null, 'Untitled draft', 5, 2000, 100, 15, v_uid,
+          gen_random_uuid(), now() + interval '24 hours', 'manual', p_content_mode)
+  returning * into v_room;
+
+  return jsonb_build_object('setup_token', v_room.setup_token,
+                            'expires_at', v_room.setup_expires_at,
+                            'room_id', v_room.id,
+                            'content_mode', v_room.content_mode);
+end $$;
+grant execute on function public.create_room(text,int,int,int,int,text,boolean,int,text,text,text,uuid,text) to anon, authenticated;
+grant execute on function public.create_pending_room(text) to anon, authenticated;
+
+-- ── does this room's host still pay for the audience vote? ────────────────
+create or replace function public.df20_room_vote_enabled(p_room uuid)
+returns boolean language sql stable security definer
+set search_path = public, pg_temp as $$
+  select coalesce((select public.df20_premium_active(r.host_profile_id)
+                     from public.rooms r where r.id = p_room), false)
+$$;
+revoke all on function public.df20_room_vote_enabled(uuid) from public;
+revoke all on function public.df20_room_vote_enabled(uuid) from anon, authenticated;
+
+-- ── the vote page ─────────────────────────────────────────────────────────
+-- 'locked' is a distinct answer from 'gone': the voter should be told the
+-- draft is real and the host has not unlocked voting, not that the link is
+-- broken. It is also the one place a stranger meets the paywall, so it is
+-- worth being honest rather than blank.
+create or replace function public.get_audience_state(p_code text, p_voter_key text)
+returns jsonb language plpgsql stable security definer
+set search_path = public, pg_temp as $$
+declare v_room public.rooms; v_mine uuid; v_key text;
+begin
+  v_key := btrim(coalesce(p_code, ''));
+  if v_key ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+    select * into v_room from public.rooms where id = v_key::uuid;
+  else
+    select * into v_room from public.rooms where code = upper(v_key);
+  end if;
+  if not found then return jsonb_build_object('status','gone'); end if;
+
+  if v_room.status <> 'complete' then
+    return jsonb_build_object('status','not_finished', 'title', v_room.title,
+                              'room_id', v_room.id, 'code', v_room.code);
+  end if;
+
+  if not public.df20_room_vote_enabled(v_room.id) then
+    return jsonb_build_object('status','locked', 'title', v_room.title,
+                              'code', v_room.code);
+  end if;
+
+  select winner_player_id into v_mine from public.audience_votes
+   where room_id = v_room.id and voter_key = coalesce(p_voter_key, '');
+
+  return jsonb_build_object(
+    'status', 'open',
+    'room_id', v_room.id,
+    'code', v_room.code,
+    'title', v_room.title,
+    'category', v_room.category_name,
+    'roster_size', v_room.roster_size,
+    'starting_cents', v_room.starting_bankroll_cents,
+    'players', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'id', pl.id, 'seat', pl.seat, 'name', pl.display_name,
+               'leftover_cents', pl.bankroll_cents,
+               'spent_cents', coalesce((select sum(r.price_cents) from public.roster_entries r
+                                         where r.room_id = v_room.id and r.player_id = pl.id), 0),
+               'rows', coalesce((
+                 select jsonb_agg(jsonb_build_object(
+                          'pick', r.pick_number, 'item', r.item_name,
+                          'price_cents', r.price_cents, 'gifted', r.gifted)
+                        order by r.pick_number)
+                   from public.roster_entries r
+                  where r.room_id = v_room.id and r.player_id = pl.id), '[]'::jsonb))
+             order by pl.seat)
+        from public.players pl where pl.room_id = v_room.id), '[]'::jsonb),
+    'your_vote', v_mine,
+    'tally', case when v_mine is null then null
+                  else public.df20_audience_tally(v_room.id) end);
+end $$;
+grant execute on function public.get_audience_state(text, text) to anon, authenticated;
+
+-- ── and the vote itself ───────────────────────────────────────────────────
+create or replace function public.cast_audience_vote(
+  p_code text, p_voter_key text, p_winner_player_id uuid
+) returns jsonb language plpgsql security definer
+set search_path = public, pg_temp as $$
+declare v_room public.rooms; v_key text; v_ref text;
+begin
+  v_key := public.df20_clean_text(p_voter_key, 64);
+  if length(v_key) < 16 then raise exception 'DF20_BAD_VOTE'; end if;
+
+  v_ref := btrim(coalesce(p_code, ''));
+  if v_ref ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+    select * into v_room from public.rooms where id = v_ref::uuid for update;
+  else
+    select * into v_room from public.rooms where code = upper(v_ref) for update;
+  end if;
+  if not found then raise exception 'DF20_NO_ROOM'; end if;
+  if v_room.status <> 'complete' then raise exception 'DF20_NOT_COMPLETE'; end if;
+  if not public.df20_room_vote_enabled(v_room.id) then
+    raise exception 'DF20_PREMIUM_REQUIRED';
+  end if;
+  if not exists (select 1 from public.players
+                  where id = p_winner_player_id and room_id = v_room.id)
+    then raise exception 'DF20_BAD_VOTE'; end if;
+
+  if not public.df20_rate_limit('aud_vote', v_key, 20, 3600) then
+    raise exception 'DF20_RATE_LIMITED';
+  end if;
+
+  insert into public.audience_votes (room_id, voter_key, winner_player_id)
+  values (v_room.id, v_key, p_winner_player_id)
+  on conflict (room_id, voter_key) do nothing;
+
+  begin
+    perform realtime.send(
+      public.df20_audience_tally(v_room.id), 'audience',
+      'room:' || v_room.id::text, false);
+  exception when others then null;
+  end;
+
+  return public.get_audience_state(v_room.id::text, v_key);
+end $$;
+grant execute on function public.cast_audience_vote(text, text, uuid) to anon, authenticated;
+
+-- ─────────── 0034_free_vote.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · 0034 · the audience vote goes back to free
+--
+-- 0033 put it behind the paywall. That was the wrong lever: the vote link is
+-- how somebody who has never heard of this app meets it. A stranger opens it,
+-- argues about two rosters, and is asked whether they could draft better —
+-- which is the only path here that reaches people with no prior contact.
+-- Charging the host for it converts a few and costs all the reach.
+--
+-- The split that survives is the honest one:
+--
+--   FREE     the public vote link, the blind tally, the call to action
+--   PREMIUM  the HOST's live dashboard — watching the tally move in the
+--            Content tab while it happens. That is a production tool, not
+--            distribution, and it stays behind the line.
+--
+-- Everything else 0033 did stands: host-supplied categories are still premium.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+create or replace function public.get_audience_state(p_code text, p_voter_key text)
+returns jsonb language plpgsql stable security definer
+set search_path = public, pg_temp as $$
+declare v_room public.rooms; v_mine uuid; v_key text;
+begin
+  v_key := btrim(coalesce(p_code, ''));
+  if v_key ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+    select * into v_room from public.rooms where id = v_key::uuid;
+  else
+    select * into v_room from public.rooms where code = upper(v_key);
+  end if;
+  if not found then return jsonb_build_object('status','gone'); end if;
+
+  if v_room.status <> 'complete' then
+    return jsonb_build_object('status','not_finished', 'title', v_room.title,
+                              'room_id', v_room.id, 'code', v_room.code);
+  end if;
+
+  select winner_player_id into v_mine from public.audience_votes
+   where room_id = v_room.id and voter_key = coalesce(p_voter_key, '');
+
+  return jsonb_build_object(
+    'status', 'open',
+    'room_id', v_room.id,
+    'code', v_room.code,
+    'title', v_room.title,
+    'category', v_room.category_name,
+    'roster_size', v_room.roster_size,
+    'starting_cents', v_room.starting_bankroll_cents,
+    'players', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'id', pl.id, 'seat', pl.seat, 'name', pl.display_name,
+               'leftover_cents', pl.bankroll_cents,
+               'spent_cents', coalesce((select sum(r.price_cents) from public.roster_entries r
+                                         where r.room_id = v_room.id and r.player_id = pl.id), 0),
+               'rows', coalesce((
+                 select jsonb_agg(jsonb_build_object(
+                          'pick', r.pick_number, 'item', r.item_name,
+                          'price_cents', r.price_cents, 'gifted', r.gifted)
+                        order by r.pick_number)
+                   from public.roster_entries r
+                  where r.room_id = v_room.id and r.player_id = pl.id), '[]'::jsonb))
+             order by pl.seat)
+        from public.players pl where pl.room_id = v_room.id), '[]'::jsonb),
+    'your_vote', v_mine,
+    'tally', case when v_mine is null then null
+                  else public.df20_audience_tally(v_room.id) end);
+end $$;
+
+create or replace function public.cast_audience_vote(
+  p_code text, p_voter_key text, p_winner_player_id uuid
+) returns jsonb language plpgsql security definer
+set search_path = public, pg_temp as $$
+declare v_room public.rooms; v_key text; v_ref text;
+begin
+  v_key := public.df20_clean_text(p_voter_key, 64);
+  if length(v_key) < 16 then raise exception 'DF20_BAD_VOTE'; end if;
+
+  v_ref := btrim(coalesce(p_code, ''));
+  if v_ref ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+    select * into v_room from public.rooms where id = v_ref::uuid for update;
+  else
+    select * into v_room from public.rooms where code = upper(v_ref) for update;
+  end if;
+  if not found then raise exception 'DF20_NO_ROOM'; end if;
+  if v_room.status <> 'complete' then raise exception 'DF20_NOT_COMPLETE'; end if;
+  if not exists (select 1 from public.players
+                  where id = p_winner_player_id and room_id = v_room.id)
+    then raise exception 'DF20_BAD_VOTE'; end if;
+
+  if not public.df20_rate_limit('aud_vote', v_key, 20, 3600) then
+    raise exception 'DF20_RATE_LIMITED';
+  end if;
+
+  insert into public.audience_votes (room_id, voter_key, winner_player_id)
+  values (v_room.id, v_key, p_winner_player_id)
+  on conflict (room_id, voter_key) do nothing;
+
+  begin
+    perform realtime.send(
+      public.df20_audience_tally(v_room.id), 'audience',
+      'room:' || v_room.id::text, false);
+  exception when others then null;
+  end;
+
+  return public.get_audience_state(v_room.id::text, v_key);
+end $$;
+
+grant execute on function public.get_audience_state(text, text) to anon, authenticated;
+grant execute on function public.cast_audience_vote(text, text, uuid) to anon, authenticated;
+
+-- nothing gates on this any more, and a dead gate is worse than none: the
+-- next person to read it would assume the vote is still paid for
+drop function if exists public.df20_room_vote_enabled(uuid);
+
+-- ─────────── 0035_load_indexes.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · 0035 · the indexes a spike needs
+--
+-- Measured, not guessed. On a 20k-room / 40k-player copy of this schema the
+-- plans before these indexes were:
+--
+--   players by profile_id      Seq Scan, 40,000 rows read to return 60   2.28ms
+--   rooms by host_profile_id   Seq Scan, 20,000 rows read to return 25   0.96ms
+--   rooms by created_at        Seq Scan                                  2.20ms
+--
+-- Small numbers on a laptop with warm cache and no concurrency. The problem
+-- is the SHAPE: every one is O(table), so they degrade linearly with growth
+-- while the request rate is climbing at the same time.
+--
+-- Where they are on a hot path:
+--   players.profile_id       my_profile_stats + my_scouting_report — every
+--                            profile page load, twice
+--   rooms.host_profile_id    df20_export_style — EVERY results card render,
+--                            which is the image a viral post embeds
+--   rooms.created_at         admin_activity, fourteen times per page load
+--
+-- The bid path was already correct: session_token lookup is an index scan on
+-- players_token_idx, so the hottest write in the app never needed this.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- partial: a room with no host account, or an anonymous seat, is not something
+-- anybody looks up BY that column
+create index if not exists players_profile_idx
+  on public.players(profile_id) where profile_id is not null;
+
+create index if not exists rooms_host_profile_idx
+  on public.rooms(host_profile_id) where host_profile_id is not null;
+
+create index if not exists rooms_created_idx
+  on public.rooms(created_at);
+
+-- the tally is the viral query: one room, thousands of rows, aggregated on
+-- every spectator poll. Covering (room_id, winner_player_id) lets it group
+-- without touching the heap.
+create index if not exists audience_votes_tally_idx
+  on public.audience_votes(room_id, winner_player_id);
+
+-- admin_activity counts by status; cheap to serve from an index
+create index if not exists rooms_status_idx
+  on public.rooms(status) where code is not null;
+
+-- ─────────── 0036_tally_poll.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · 0036 · a tally a spectator can poll without breaking the blind
+--
+-- The vote page opens a realtime connection PER VIEWER. One popular link can
+-- therefore consume more realtime connections on its own than every live game
+-- combined — during exactly the spike this is meant to survive. Polling is the
+-- right trade for a number that changes every few seconds.
+--
+-- But polling needs an endpoint, and the obvious one breaks the blind rule:
+-- a public "give me the tally" RPC hands the answer to anyone who never voted,
+-- and the anon key is in every browser.
+--
+-- So the rule stays in the database. This returns the tally ONLY to a voter
+-- key that has actually voted in that room. Calling it directly with the anon
+-- key gets you nothing you had not already earned.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+create or replace function public.get_audience_tally_for_voter(
+  p_code text, p_voter_key text
+) returns jsonb language plpgsql stable security definer
+set search_path = public, pg_temp as $$
+declare v_room public.rooms; v_ref text;
+begin
+  v_ref := btrim(coalesce(p_code, ''));
+  if v_ref ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+    select * into v_room from public.rooms where id = v_ref::uuid;
+  else
+    select * into v_room from public.rooms where code = upper(v_ref);
+  end if;
+  if not found or v_room.status <> 'complete' then
+    return jsonb_build_object('status','gone');
+  end if;
+
+  -- THE BLIND RULE, still enforced here and not in the route
+  if not exists (select 1 from public.audience_votes
+                  where room_id = v_room.id
+                    and voter_key = coalesce(p_voter_key, '')) then
+    return jsonb_build_object('status','not_voted');
+  end if;
+
+  return jsonb_build_object('status','open',
+                            'tally', public.df20_audience_tally(v_room.id));
+end $$;
+grant execute on function public.get_audience_tally_for_voter(text, text) to anon, authenticated;
+
+-- ─────────── 0037_circuit_breaker.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · 0037 · a global budget for somebody else's API
+--
+-- The per-account limit (10 lookups/hour) protects US from one user. It does
+-- nothing about a thousand hosts each making their first perfectly legitimate
+-- lookup during a spike — every one within its own budget, all of it landing
+-- on Wikimedia at once. Getting the app's egress IP throttled or blocked by
+-- Wikidata is a self-inflicted outage that no per-account rule can prevent.
+--
+-- So there is a second, GLOBAL budget on top. When aggregate lookups exceed
+-- it in a short window, the category chain stops calling out and falls
+-- straight to the manual-setup path — which already exists, already works,
+-- and is a far better outcome than being blocked for a day.
+--
+-- Reuses df20_rate_limit: same fixed-window table, same failure posture
+-- (fails OPEN, because a broken limiter must not take down room creation).
+-- ═══════════════════════════════════════════════════════════════════════════
+
+create or replace function public.df20_external_budget(p_service text)
+returns boolean language plpgsql security definer
+set search_path = public, pg_temp as $$
+declare v_limit int; v_window int := 60;
+begin
+  -- Per MINUTE, aggregate across every account. Wikimedia's published
+  -- courtesy guidance is well above these; the point is to stay obviously
+  -- polite under a surge, not to run near any documented ceiling.
+  v_limit := case p_service
+               when 'wikidata'  then 30   -- SPARQL is the expensive one
+               when 'wikipedia' then 60
+               when 'pageviews' then 60
+               else 30
+             end;
+
+  return public.df20_rate_limit('global_' || p_service, 'all', v_limit, v_window);
+end $$;
+grant execute on function public.df20_external_budget(text) to anon, authenticated;
+
+-- ─────────── 0038_signup_signals.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · 0038 · signals for a human to read, not a verdict to act on
+--
+-- Every column here is EVIDENCE, not a judgement. A shared IP is a household,
+-- a school, or a coffee shop far more often than it is a bot farm. A
+-- disposable address is somebody who does not trust us yet. Verifying in four
+-- seconds is a password manager. None of it proves anything on its own, and
+-- nothing in this schema flags, suspends, or revokes: there is no status
+-- column to set, deliberately, so no future code can quietly start acting on
+-- a guess.
+--
+-- The rule this encodes: a false positive against a real player costs more
+-- than a slow manual review.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+create table if not exists public.signup_signals (
+  profile_id  uuid primary key references public.profiles(id) on delete cascade,
+  ip          text,
+  user_agent  text,
+  referrer    text,
+  email_domain text,
+  disposable  boolean not null default false,
+  -- 'passed' | 'skipped' (no keys configured) | 'failed'
+  turnstile   text not null default 'skipped',
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists signup_signals_ip_idx on public.signup_signals(ip) where ip is not null;
+create index if not exists signup_signals_created_idx on public.signup_signals(created_at);
+
+alter table public.signup_signals enable row level security;
+revoke all on public.signup_signals from anon, authenticated;
+
+comment on table public.signup_signals is
+  'Signup-time evidence for manual admin review. Deliberately has no verdict '
+  'or status column: nothing automated may act on these.';
+
+-- ── the disposable-domain list ────────────────────────────────────────────
+-- A signal, never a block. Somebody using a burner address is usually just
+-- cautious, and the list is always out of date in both directions.
+create table if not exists public.disposable_domains (
+  domain text primary key
+);
+alter table public.disposable_domains enable row level security;
+revoke all on public.disposable_domains from anon, authenticated;
+
+insert into public.disposable_domains (domain) values
+  ('mailinator.com'),('guerrillamail.com'),('guerrillamail.net'),('10minutemail.com'),
+  ('tempmail.com'),('temp-mail.org'),('throwawaymail.com'),('yopmail.com'),
+  ('sharklasers.com'),('grr.la'),('trashmail.com'),('getnada.com'),('dispostable.com'),
+  ('maildrop.cc'),('fakeinbox.com'),('mailnesia.com'),('mytemp.email'),('moakt.com'),
+  ('emailondeck.com'),('tempr.email'),('spamgourmet.com'),('mohmal.com'),
+  ('burnermail.io'),('anonaddy.me'),('mailsac.com'),('inboxkitten.com'),
+  ('tempmailo.com'),('minuteinbox.com'),('luxusmail.org'),('vomoto.com')
+on conflict (domain) do nothing;
+
+-- ── the write path ────────────────────────────────────────────────────────
+-- Called by the signup route with the shared secret, same posture as the
+-- billing and wiki writers: no service-role key anywhere in this project.
+create or replace function public.df20_record_signup(
+  p_secret text, p_profile_id uuid, p_ip text, p_user_agent text,
+  p_referrer text, p_email text, p_turnstile text
+) returns jsonb language plpgsql security definer
+set search_path = public, pg_temp as $$
+declare v_expected text; v_domain text; v_disposable boolean;
+begin
+  select value into v_expected from public.df20_config where key = 'wiki_write_secret';
+  if v_expected is null or p_secret is null or p_secret <> v_expected then
+    raise exception 'DF20_NOT_AUTHORISED';
+  end if;
+  if p_profile_id is null then return jsonb_build_object('recorded', false); end if;
+
+  v_domain := lower(split_part(coalesce(p_email, ''), '@', 2));
+  v_disposable := v_domain <> ''
+    and exists (select 1 from public.disposable_domains d where d.domain = v_domain);
+
+  insert into public.signup_signals
+    (profile_id, ip, user_agent, referrer, email_domain, disposable, turnstile)
+  values (p_profile_id,
+          nullif(left(coalesce(p_ip, ''), 45), ''),
+          nullif(left(coalesce(p_user_agent, ''), 400), ''),
+          nullif(left(coalesce(p_referrer, ''), 300), ''),
+          nullif(v_domain, ''),
+          v_disposable,
+          case when p_turnstile in ('passed','failed','skipped') then p_turnstile else 'skipped' end)
+  on conflict (profile_id) do nothing;
+
+  return jsonb_build_object('recorded', true, 'disposable', v_disposable);
+end $$;
+revoke all on function public.df20_record_signup(text,uuid,text,text,text,text,text) from public;
+revoke all on function public.df20_record_signup(text,uuid,text,text,text,text,text) from anon, authenticated;
+
+-- ─────────── 0039_admin_signals.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · 0039 · the trust-signals view, for an admin to read
+--
+-- Everything behavioural is DERIVED at read time rather than stored: time to
+-- verify, time to first action, how many accounts share an IP. Storing them
+-- would mean a number that silently goes stale and, worse, a number that
+-- looks like a fact. Computing on read means what an admin sees is what is
+-- true when they look at it.
+--
+-- There is no score. Deliberately. A single number invites acting on the
+-- number instead of reading the evidence, and the whole point of this table
+-- is that no single signal is proof. `worth_review` exists as the mildest
+-- possible nudge — it counts how many signals are present, and an admin who
+-- disagrees with it can ignore it with no consequence.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+create or replace function public.admin_user_signals(
+  p_query text default null,
+  p_filter text default 'all'
+) returns jsonb language plpgsql stable security definer
+set search_path = public, pg_temp as $$
+declare v_q text; v_f text;
+begin
+  if not public.df20_is_admin() then raise exception 'DF20_NOT_AUTHORISED'; end if;
+  v_q := lower(btrim(coalesce(p_query, '')));
+  v_f := coalesce(nullif(btrim(lower(p_filter)), ''), 'all');
+
+  return coalesce((
+    select jsonb_agg(to_jsonb(x) order by x.created_at desc) from (
+      select
+        p.id,
+        p.email,
+        p.handle,
+        p.created_at,
+        coalesce(p.premium_until > now(), false) as premium,
+        s.ip,
+        s.user_agent,
+        s.referrer,
+        s.disposable,
+        s.turnstile,
+
+        -- how many OTHER accounts signed up from this address. Shared IPs are
+        -- households and schools far more often than anything else, so this
+        -- is a count to read, not a threshold to trip.
+        case when s.ip is null then null else (
+          select count(*) - 1 from public.signup_signals o where o.ip = s.ip
+        ) end as ip_shared_with,
+
+        -- confirmed in a couple of seconds is a password manager as often as
+        -- it is a script; never confirmed is usually somebody who lost interest
+        -- measured from profiles.created_at, not auth.users.created_at: the
+        -- trigger creates them in the same transaction, and this keeps the
+        -- function independent of the auth schema's shape
+        (select extract(epoch from (u.email_confirmed_at - p.created_at))::int
+           from auth.users u where u.id = p.id) as seconds_to_verify,
+
+        -- the strongest single signal here, and still not proof: an account
+        -- that confirmed an address and then never played anything
+        -- least() ignores NULLs in Postgres, so an account with no players
+        -- row and no hosted room yields NULL rather than a sentinel — and
+        -- NULL is exactly what "never did anything" should read as. An
+        -- earlier version used 'infinity' here and threw "cannot convert
+        -- infinity to integer" on precisely the accounts this feature exists
+        -- to surface.
+        (select extract(epoch from (least(
+                  (select min(pl.created_at) from public.players pl
+                    where pl.profile_id = p.id),
+                  (select min(r.created_at) from public.rooms r
+                    where r.host_profile_id = p.id)
+                ) - p.created_at))::int) as seconds_to_first_action,
+
+        -- rate limiting the app already does elsewhere, surfaced here rather
+        -- than left in a table nobody reads
+        (select coalesce(sum(rl.count), 0) from public.rate_limits rl
+          where rl.subject = p.id::text) as rate_limit_hits
+
+      from public.profiles p
+      left join public.signup_signals s on s.profile_id = p.id
+      where (v_q = ''
+             or lower(coalesce(p.email, '')) like '%' || v_q || '%'
+             or lower(coalesce(p.handle, '')) like '%' || v_q || '%'
+             or coalesce(s.ip, '') like '%' || v_q || '%')
+      order by p.created_at desc
+      limit 300
+    ) x
+    where case v_f
+      when 'disposable' then (x.disposable is true)
+      when 'shared_ip'  then coalesce(x.ip_shared_with, 0) > 0
+      when 'no_action'  then x.seconds_to_first_action is null
+      when 'unverified' then x.seconds_to_verify is null
+      when 'fast_verify' then coalesce(x.seconds_to_verify, 99999) < 15
+      else true
+    end), '[]'::jsonb);
+end $$;
+grant execute on function public.admin_user_signals(text, text) to authenticated;
+
+-- ─────────── 0040_signal_sanity.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · 0040 · absence of evidence is not evidence
+--
+-- 0039 flagged essentially every account, including the creator's. Two bugs,
+-- both the same mistake in different clothes: treating MISSING DATA as a
+-- SIGNAL.
+--
+--   1. NEGATIVE DURATIONS. seconds_to_verify is measured from
+--      profiles.created_at, but 0032 backfilled profile rows for accounts
+--      that already existed — so the profile row is NEWER than the
+--      confirmation it is being compared against, and the difference comes
+--      out negative. Negative then trivially satisfies "< 15 seconds", so the
+--      oldest and most legitimate accounts in the system — the creator's
+--      first of all — got flagged as "verified instantly". A negative
+--      duration does not mean somebody verified before signing up. It means
+--      the two timestamps are not comparable, which is not a signal at all.
+--
+--   2. NO SIGNUP RECORD AT ALL. Every account created before 0038 has no
+--      signup_signals row. That is not suspicious, it is chronology. These
+--      now report has_signup_record = false so the UI can say so plainly
+--      instead of rendering blanks as findings.
+--
+-- The rule this restores: a signal has to be something we OBSERVED, not
+-- something we failed to observe.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+create or replace function public.admin_user_signals(
+  p_query text default null,
+  p_filter text default 'all'
+) returns jsonb language plpgsql stable security definer
+set search_path = public, pg_temp as $$
+declare v_q text; v_f text;
+begin
+  if not public.df20_is_admin() then raise exception 'DF20_NOT_AUTHORISED'; end if;
+  v_q := lower(btrim(coalesce(p_query, '')));
+  v_f := coalesce(nullif(btrim(lower(p_filter)), ''), 'all');
+
+  return coalesce((
+    select jsonb_agg(to_jsonb(x) order by x.created_at desc) from (
+      select
+        p.id, p.email, p.handle, p.created_at,
+        coalesce(p.premium_until > now(), false) as premium,
+        s.ip, s.user_agent, s.referrer, s.disposable, s.turnstile,
+
+        -- chronology, not suspicion
+        (s.profile_id is not null) as has_signup_record,
+
+        case when s.ip is null then null else (
+          select count(*) - 1 from public.signup_signals o where o.ip = s.ip
+        ) end as ip_shared_with,
+
+        -- a negative gap means the profile row was backfilled after the
+        -- confirmation it is measured against; report unknown, not "instant"
+        (select case when v >= 0 then v end from (
+           select extract(epoch from (u.email_confirmed_at - p.created_at))::int as v
+             from auth.users u where u.id = p.id) q) as seconds_to_verify,
+
+        (select case when v >= 0 then v end from (
+           select extract(epoch from (least(
+                    (select min(pl.created_at) from public.players pl
+                      where pl.profile_id = p.id),
+                    (select min(r.created_at) from public.rooms r
+                      where r.host_profile_id = p.id)
+                  ) - p.created_at))::int as v) q) as seconds_to_first_action,
+
+        -- did they ever actually do anything, independent of WHEN. This is
+        -- the honest version of "never played": a fact about activity, not a
+        -- byproduct of two timestamps that may not line up.
+        (exists (select 1 from public.players pl where pl.profile_id = p.id)
+         or exists (select 1 from public.rooms r where r.host_profile_id = p.id))
+          as has_played,
+
+        (select coalesce(sum(rl.count), 0) from public.rate_limits rl
+          where rl.subject = p.id::text) as rate_limit_hits
+
+      from public.profiles p
+      left join public.signup_signals s on s.profile_id = p.id
+      where (v_q = ''
+             or lower(coalesce(p.email, '')) like '%' || v_q || '%'
+             or lower(coalesce(p.handle, '')) like '%' || v_q || '%'
+             or coalesce(s.ip, '') like '%' || v_q || '%')
+      order by p.created_at desc
+      limit 300
+    ) x
+    where case v_f
+      when 'disposable'  then (x.disposable is true)
+      when 'shared_ip'   then coalesce(x.ip_shared_with, 0) > 0
+      when 'no_action'   then x.has_played = false
+      when 'unverified'  then x.seconds_to_verify is null and x.has_signup_record
+      when 'fast_verify' then coalesce(x.seconds_to_verify, 99999) < 15
+      else true
+    end), '[]'::jsonb);
+end $$;
+grant execute on function public.admin_user_signals(text, text) to authenticated;
+
+-- ─────────── 0041_profiles_grant_hardening.sql ───────────
+
+-- 0041_profiles_grant_hardening.sql
 --
 -- profiles and templates were left with blanket table grants to anon and
 -- authenticated. RLS is what actually holds them shut, and for anon it does:
@@ -5475,11 +7084,11 @@ begin
   if has_table_privilege('anon','public.profiles','SELECT')
     then v_bad := v_bad || 'anon can SELECT profiles'; end if;
 
-  -- NO assertion here that the branding columns are still writable. 0027
+  -- NO assertion here that the branding columns are still writable. 0042
   -- revokes every write grant on this table and moves the write behind
   -- save_profile(), so asserting the grants this file just issued would be
   -- asserting an intermediate state that the very next migration removes on
-  -- purpose. df20_grant_check() in 0027 is the assertion that describes the
+  -- purpose. df20_grant_check() in 0042 is the assertion that describes the
   -- end state; this one only has to say the privileged columns are shut.
 
   if coalesce(array_length(v_bad,1),0) > 0 then
@@ -5488,13 +7097,13 @@ begin
   raise notice 'profiles grants ok - premium columns are RPC-only';
 end $$;
 
--- ─────────── 0027_write_paths_and_grant_check.sql ───────────
+-- ─────────── 0042_write_paths_and_grant_check.sql ───────────
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- DraftFor20 · 0027 · the last direct table write, and a check that keeps
---                     0026 from silently coming undone
+-- DraftFor20 · 0042 · the last direct table write, and a check that keeps
+--                     0041 from silently coming undone
 --
--- 0026 scoped the grants on public.profiles to the columns the app actually
+-- 0041 scoped the grants on public.profiles to the columns the app actually
 -- writes. That closed the escalation, but it also broke the one place that
 -- still wrote the table directly: HostClient.saveProfile() used a PostgREST
 -- upsert, and PostgREST compiles an upsert to
@@ -5506,7 +7115,7 @@ end $$;
 -- cannot be pointed at anyone else) — but it would leave the client holding a
 -- write grant on a table that carries premium_until and stripe_customer_id,
 -- and the next column added to that table would be exposed by default. That
--- is the shape of the bug 0026 just fixed.
+-- is the shape of the bug 0041 just fixed.
 --
 -- So the write moves behind a SECURITY DEFINER function instead, exactly like
 -- save_export_style, and `authenticated` keeps no write grant on profiles at
@@ -5636,10 +7245,10 @@ begin
   end loop;
 end $$;
 
--- ─────────── 0028_item_images.sql ───────────
+-- ─────────── 0043_item_images.sql ───────────
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- DraftFor20 · 0028 · a picture on the card being auctioned
+-- DraftFor20 · 0043 · a picture on the card being auctioned
 --
 -- Carries an image the whole length of the existing chain:
 --
@@ -5937,7 +7546,7 @@ begin
 end $$;
 
 -- ── selfcheck: df20_cache_wikipedia changed shape ─────────────────────────
--- search_path is pinned inline: 0027's pinning loop runs BEFORE this file and
+-- search_path is pinned inline: 0042's pinning loop runs BEFORE this file and
 -- only touches functions whose proconfig is null, so a df20_ function created
 -- afterwards has to pin itself or it stays unpinned forever.
 create or replace function public.df20_selfcheck_images()
@@ -5974,17 +7583,17 @@ revoke all on function public.df20_selfcheck_images() from anon, authenticated;
 
 select public.df20_selfcheck_images();
 
--- ─────────── 0029_onepiece.sql ───────────
+-- ─────────── 0044_onepiece.sql ───────────
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- DraftFor20 · 0029 · One Piece Characters, with portraits
+-- DraftFor20 · 0044 · One Piece Characters, with portraits
 --
 -- GENERATED by scripts/build-onepiece-seed.mjs. Re-run that rather than
 -- editing the lists below; the names and the URLs are positional and hand
 -- editing one without the other slides every later picture onto the wrong
 -- character.
 --
--- The first library category to ship with images. 0028 carries image_url the
+-- The first library category to ship with images. 0043 carries image_url the
 -- length of the chain (library -> room_pool -> room_deck -> lots), and the
 -- leak rule is unchanged: the picture travels exactly where the name travels
 -- and reaches a client only when the card is dealt.
@@ -5993,7 +7602,7 @@ select public.df20_selfcheck_images();
 -- ═══════════════════════════════════════════════════════════════════════════
 
 -- ── the image allowlist gains one host ────────────────────────────────────
--- Everything else about df20_clean_image_url is the 0028 text. MAL portraits
+-- Everything else about df20_clean_image_url is the 0043 text. MAL portraits
 -- are fair-use promotional art, which is the same footing as the non-free
 -- Wikipedia infobox leads already allowed, and they are stored as 'nonfree'
 -- so a freeOnly policy can drop them as a set.
@@ -6015,7 +7624,7 @@ end $$;
 -- ── seeding a category that has pictures ──────────────────────────────────
 -- Four arguments with NO defaults, so the two-argument df20_seed_category
 -- survives as a real function rather than becoming an ambiguous call. Same
--- reasoning as the two df20_cache_wikipedia arities in 0028, and the
+-- reasoning as the two df20_cache_wikipedia arities in 0043, and the
 -- two-argument form is asserted by df20_selfcheck().
 --
 -- Indexed rather than FOREACH because the arrays are positional: a name that
@@ -6247,16 +7856,16 @@ begin
   raise notice 'One Piece Characters: % items, all with portraits', v_total;
 end $$;
 
--- ─────────── 0030_dev_library_preview.sql ───────────
+-- ─────────── 0045_dev_library_preview.sql ───────────
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- DraftFor20 · 0030 · reading a seeded category back, for the dev browser
+-- DraftFor20 · 0045 · reading a seeded category back, for the dev browser
 --
 -- /dev/cards previews the RUNTIME image cascade: it parses a Wikipedia list
 -- and resolves pictures live. That is the right preview for a category nobody
 -- curated, and the wrong one for a category somebody did — typing "one piece"
 -- there parses "List of One Piece characters" and shows different names with
--- the group-photo images that 0029 deliberately rejected. A preview that
+-- the group-photo images that 0044 deliberately rejected. A preview that
 -- disagrees with what a room will actually deal is worse than no preview.
 --
 -- So the dev browser needs to read category_library_items. Those are revoked
@@ -6355,20 +7964,20 @@ begin
   raise notice 'ok: df20_library_items refuses a wrong secret';
 end $$;
 
--- ─────────── 0031_anime_categories.sql ───────────
+-- ─────────── 0046_anime_categories.sql ───────────
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- DraftFor20 · 0031 · five more anime casts, with portraits
+-- DraftFor20 · 0046 · five more anime casts, with portraits
 --
 -- GENERATED by scripts/build-anime-seed.mjs. Re-run that rather than editing
 -- the lists below; names and URLs are positional, and hand editing one
 -- without the other slides every later picture onto the wrong character.
 --
--- Same shape and same reasoning as 0029 (One Piece): seeded from MyAnimeList
+-- Same shape and same reasoning as 0044 (One Piece): seeded from MyAnimeList
 -- rather than resolved from Wikipedia, because Wikipedia redirects most of a
 -- cast to a group article and hands several characters the same photograph.
 --
--- Depends on 0029 for df20_seed_category(text,text[],text[],text[]) and for
+-- Depends on 0044 for df20_seed_category(text,text[],text[],text[]) and for
 -- the MyAnimeList host on the image allowlist. df20_clean_image_url is
 -- re-declared below anyway so this file is correct applied on its own — the
 -- df20_clean_logo_url outage was exactly a caller split from its dependency
@@ -6990,10 +8599,10 @@ begin
   end loop;
 end $$;
 
--- ─────────── 0032_library_genres.sql ───────────
+-- ─────────── 0047_library_genres.sql ───────────
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- DraftFor20 · 0031 · genres for the shelf
+-- DraftFor20 · 0046 · genres for the shelf
 --
 -- The library is 23 categories and growing, rendered as one flat wall of
 -- chips in /new. Past about a dozen that stops being a menu and becomes a
@@ -7020,7 +8629,7 @@ declare
     'sports', jsonb_build_array('Football Draft','NFL Teams','NBA Teams','MLB Teams'),
     'movies', jsonb_build_array('Disney Animated Movies','Movie Villains'),
     'tv',     jsonb_build_array('TV Sitcoms'),
-    -- 0029 and 0031 each added anime categories; this list has to be extended
+    -- 0044 and 0046 each added anime categories; this list has to be extended
     -- alongside them. The 'ungenred' notice below is what catches the miss —
     -- it is how Naruto and Demon Slayer were spotted sitting in 'other'.
     'anime',  jsonb_build_array('One Piece Characters','Naruto Characters',
@@ -7099,10 +8708,10 @@ revoke all on function public.df20_selfcheck_genres() from anon, authenticated;
 
 select public.df20_selfcheck_genres();
 
--- ─────────── 0033_revoke_public_execute.sql ───────────
+-- ─────────── 0048_revoke_public_execute.sql ───────────
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- DraftFor20 · 0033 · every `revoke ... from anon, authenticated` in this
+-- DraftFor20 · 0048 · every `revoke ... from anon, authenticated` in this
 --                     repo has been a no-op, and here is why
 --
 -- Postgres grants EXECUTE on a new function to PUBLIC by default. anon and

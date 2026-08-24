@@ -56,13 +56,28 @@ export async function accessToken(): Promise<string | null> {
   return data.session?.access_token ?? null;
 }
 
+/**
+ * Where to land after authenticating.
+ *
+ * Coming back to "exactly where they were" is wrong when where they were was
+ * the login or signup page: you sign in and get dropped right back on the
+ * create-an-account screen. Those, anything off-site, and anything that is
+ * not a plain path all fall back to home.
+ */
+export function safeNext(path: string | null | undefined): string {
+  const p = (path ?? "").trim();
+  if (!/^\/[^/\\]/.test(p)) return "/";            // off-site or malformed
+  if (/^\/(login|signup|auth)(\/|\?|$)/.test(p)) return "/";  // the auth pages themselves
+  return p;
+}
+
 /** Where to send someone to sign in and come back to exactly where they were. */
 export function signInHref(next: string): string {
-  return `/login?next=${encodeURIComponent(next)}`;
+  return `/login?next=${encodeURIComponent(safeNext(next))}`;
 }
 
 export function signUpHref(next: string): string {
-  return `/signup?next=${encodeURIComponent(next)}`;
+  return `/signup?next=${encodeURIComponent(safeNext(next))}`;
 }
 
 /**
@@ -74,6 +89,8 @@ export interface AuthResult {
   ok: boolean;
   message?: string;
   needsConfirmation?: boolean;
+  /** the address already has an account; offer sign-in rather than signup */
+  alreadyRegistered?: boolean;
 }
 
 const MIN_PASSWORD = 10;
@@ -103,6 +120,17 @@ export async function signUpWithPassword(email: string, password: string, next: 
     },
   });
   if (error) return { ok: false, message: friendly(error.message) };
+
+  /* Supabase deliberately does NOT error on a duplicate address: it returns a
+     lookalike user so an anonymous visitor cannot probe which emails are
+     registered. The tell is an EMPTY identities array — a real new signup
+     always comes back with one. Without checking it, somebody signing up
+     again is shown "check your email" and then waits for a message that is
+     never coming. */
+  if (data.user && (data.user.identities?.length ?? 0) === 0) {
+    return { ok: false, alreadyRegistered: true };
+  }
+
   // no session means Supabase is waiting on email confirmation
   return { ok: true, needsConfirmation: !data.session };
 }

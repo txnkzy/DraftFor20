@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { allow } from "@/lib/rateLimit";
-import { fetchCategory } from "@/lib/wikipedia";
-import { resolveImages } from "@/lib/images/resolve";
 import { requireUser } from "@/lib/api/auth";
+import { runLookupChain, type LibraryHit } from "@/lib/category/chain";
+import { fetchWikidataCategory } from "@/lib/wikidata";
+import { fetchCategory, rankByPageviews } from "@/lib/wikipedia";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,10 +11,16 @@ export const dynamic = "force-dynamic";
 /**
  * Resolve a typed category name to a playable pool.
  *
- *   public library  ->  internal wikipedia cache  ->  fresh Wikipedia fetch
+ *   1 library / cache   2 Wikidata by sitelinks   3 Wikipedia by pageviews   4 nothing
  *
  * The response carries provenance and a COUNT. It never carries an item, from
- * any of the three sources. That is the whole point of doing this server-side.
+ * any of the four sources. That is the whole point of doing this server-side.
+ *
+ * ONE lookup spends ONE unit of rate-limit budget. Steps 2 and 3 are two
+ * halves of a single search as far as the person typing is concerned, and a
+ * search that tried four Wikidata candidates and four pageview batches made
+ * nine HTTP calls — charging any of that per-call would let one search empty
+ * an hourly allowance.
  */
 export async function POST(req: Request) {
   let query = "";
@@ -29,80 +36,132 @@ export async function POST(req: Request) {
     return NextResponse.json({ message: "Type a category name." }, { status: 400 });
   }
   if (rosterSize < 1 || rosterSize > 30) rosterSize = 5;
-  const minItems = rosterSize * 2;
 
-  // Typing your own category is the gated path. Verified here rather than
-  // trusted from the UI, because this route is reachable with curl.
+  const minItems = rosterSize * 2;
+  // both rosters, plus enough spare that the shuffled deck is not the whole
+  // list in a slightly different order
+  const keep = Math.min(Math.max(minItems * 4, 40), 120);
+
+  // One gate for every route: parses the bearer, verifies it with Supabase,
+  // and hands back a client already speaking as the caller.
   const auth = await requireUser(req);
   if (auth instanceof NextResponse) return auth;
   const sb = auth.sb;
+  const uid = auth.user.id;
 
-  // library and cache hits are free; only the Wikipedia path is rationed
-  const { data: hit } = await sb.rpc("df20_match_category", {
-    p_query: query,
-    p_min_items: minItems,
+  /**
+   * The global circuit breaker. Fails OPEN on any error: a limiter that
+   * cannot be reached must never be the reason a room cannot be created.
+   */
+  const externalBudget = async (
+    service: "wikidata" | "wikipedia" | "pageviews",
+  ): Promise<boolean> => {
+    try {
+      const { data, error } = await sb.rpc("df20_external_budget", { p_service: service });
+      if (error) return true;
+      if (data === false) {
+        console.warn(
+          `[category] global ${service} budget tripped — falling through to manual setup`,
+        );
+        return false;
+      }
+      return true;
+    } catch {
+      return true;
+    }
+  };
+
+
+  let popularityFiltered: boolean | undefined;
+
+  const outcome = await runLookupChain({
+    libraryMatch: async () => {
+      const { data } = await sb.rpc("df20_match_category", {
+        p_query: query,
+        p_min_items: minItems,
+      });
+      return (data as LibraryHit | null) ?? null;
+    },
+
+    // the one and only charge, keyed to the account rather than a shared IP
+    spendBudget: () => allow("category_lookup", uid, 10, 3600),
+
+    wikidata: async () => {
+      // GLOBAL budget, on top of this account's. A thousand hosts each making
+      // one legitimate lookup during a spike is still a thousand requests at
+      // Wikimedia in a minute; being blocked for it is a self-inflicted
+      // outage. Tripped means fall through, exactly like "no match".
+      if (!(await externalBudget("wikidata"))) return null;
+      const found = await fetchWikidataCategory(query, minItems, keep);
+      return found ? { title: found.title, items: found.items, entityId: found.entityId } : null;
+    },
+
+    wikipedia: async () => {
+      if (!(await externalBudget("wikipedia"))) return null;
+      const found = await fetchCategory(query, minItems);
+      if (!found) return null;
+      // fetchCategory returns WikiItem{name,title} so the image cascade has a
+      // canonical article to look each entry up by. The lookup chain works in
+      // display names, so flatten at this boundary rather than widening the
+      // chain's type for a field it has no use for.
+      const names = found.items.map((i) => i.name);
+      // the ranking is a second service and gets its own budget; losing it
+      // costs the popularity sort, not the lookup
+      const ranked = (await externalBudget("pageviews"))
+        ? await rankByPageviews(names, keep)
+        : { items: names.slice(0, keep), filtered: false };
+      popularityFiltered = ranked.filtered;
+      return { title: found.title, items: ranked.items, popularityFiltered: ranked.filtered };
+    },
   });
-  if (hit) {
-    return NextResponse.json({
-      source: hit.source,
-      sourceId: hit.source_id,
-      matchedName: hit.name,
-      itemCount: hit.item_count,
-      score: hit.score,
-    });
-  }
 
-  // keyed to the account, not a shared IP
-  if (!(await allow("wiki_lookup", auth.user.id, 10, 3600))) {
+  if (outcome.kind === "rate_limited") {
     return NextResponse.json({ message: "DF20_RATE_LIMITED" }, { status: 429 });
   }
 
-  const found = await fetchCategory(query, minItems);
-  if (!found) {
+  if (outcome.kind === "hit") {
+    const h = outcome.hit;
+    return NextResponse.json({
+      source: h.source,
+      sourceId: h.source_id,
+      matchedName: h.name,
+      itemCount: h.item_count,
+      score: h.score,
+    });
+  }
+
+  if (outcome.kind === "none") {
     return NextResponse.json({ source: null, message: "DF20_NO_MATCH" }, { status: 200 });
   }
 
-  // Pictures are resolved HERE, once, and cached with the names — not per
-  // room. A category costs this round-trip the first time anybody drafts it
-  // and nothing on every draft after, which is what keeps it off the path
-  // between two players waiting in a lobby.
-  //
-  // A failure is not fatal: resolveImages already degrades item by item, and
-  // if the whole call throws, the category is still perfectly playable with
-  // no pictures at all.
-  let images: (string | null)[] = [];
-  let licenses: (string | null)[] = [];
-  try {
-    const resolved = await resolveImages(found.items);
-    // a generated card is not stored — a null URL tells the client to draw
-    // one from the item name, which costs nothing and cannot go stale
-    images = resolved.map((r) => (r.source === "generated" ? null : r.url));
-    licenses = resolved.map((r) => (r.source === "generated" ? null : r.license));
-  } catch {
-    images = [];
-    licenses = [];
-  }
-
-  // public encyclopedia content, cached with no opt-in so the next room asking
-  // for the same thing costs Wikipedia nothing
-  const secret = process.env.WIKI_WRITE_SECRET ?? "";
+  // public structured data either way, cached with no opt-in so the next room
+  // asking for the same thing costs Wikimedia nothing
+  const { list, from } = outcome;
   const { data: cached, error } = await sb.rpc("df20_cache_wikipedia", {
-    p_secret: secret,
+    p_secret: process.env.WIKI_WRITE_SECRET ?? "",
     p_query: query,
-    p_title: found.title,
-    p_items: found.items.map((i) => i.name),
-    // positional against p_items; the RPC pairs them by index
-    p_images: images,
-    p_licenses: licenses,
+    p_title: list.title,
+    p_items: list.items,
+    p_source: from,
+    p_entity_id: list.entityId ?? null,
   });
   if (error) {
     return NextResponse.json({ message: "Could not store that category." }, { status: 500 });
   }
 
+  // a fallback-of-a-fallback nobody can see is one nobody ever fixes
+  if (from === "wikipedia" && popularityFiltered === false) {
+    console.warn(
+      `[category] pageview ranking unavailable for "${query}" — served the parsed list capped at ${keep}`,
+    );
+  }
+
+  const c = cached as { source_id: string; item_count: number };
   return NextResponse.json({
-    source: "wikipedia",
-    sourceId: cached.source_id,
-    matchedName: cached.name,
-    itemCount: cached.item_count,
+    source: from,
+    sourceId: c.source_id,
+    matchedName: list.title,
+    itemCount: c.item_count,
+    popularityFiltered: from === "wikidata" ? true : popularityFiltered,
   });
 }

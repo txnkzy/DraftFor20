@@ -5,7 +5,7 @@ fixed bankroll across a flat roster of N picks, bidding against each other
 under a server-authoritative countdown. When the money runs out the app
 produces a vertical 1080×1920 results card.
 
-**Live:** https://draftfor20.vercel.app
+**Live:** https://www.draftfor20.com  (apex redirects to www; `draftfor20.vercel.app` still serves in parallel)
 **Supabase project ref:** `jwnlmvjzeodfmngnhadq`
 **Stack:** Next.js 16 (App Router) · React 19 · TypeScript · Tailwind v4 ·
 Supabase (Postgres + Realtime + Auth) · Vercel
@@ -80,6 +80,17 @@ genuinely public routes (magic-link, billing config, share card) and the
 audience vote say so in a `// AUTH:` comment at the top, so "why is this
 open?" is greppable rather than assumed. None of this replaces the checks in
 Postgres — it decides who reaches an RPC; the RPC decides what they may do.
+
+**`NEXT_PUBLIC_*` is inlined at BUILD time.** Changing `NEXT_PUBLIC_SITE_URL`
+in the Vercel dashboard does nothing to a deployment that already exists — the
+old value is compiled into the bundle. It needs a redeploy, and the served
+JS is where to check which value actually shipped.
+
+**Admin is `profiles.is_admin`, with the old `df20_config.admin_user_ids` row
+still honoured.** `df20_is_admin()` accepts either, deliberately: if the 0028
+backfill ever missed, the operator would be locked out of the very panel that
+grants admin. Revoking clears both sources, because a uuid left in the config
+row silently re-grants on the next check.
 
 **RLS is deny-all with no anon policies on every game table.** Clients cannot
 read any table directly; the only read path is `df20_public_state()`, a
@@ -171,12 +182,12 @@ on it.
 | Surface | Gate |
 |---|---|
 | Content Creator rooms | premium, chosen at creation and never changed |
-| Record mode, OBS link, live tally | premium |
+| Record mode, OBS link, the host's live tally | premium |
 | OBS token minting | premium, **checked in the RPC**, not the UI |
 | Scouting report beyond the last 5 drafts | premium, windowed in the RPC |
 | Export card branding | premium, and opt-out only (see below) |
-| Custom categories | still sign-in, not premium — `PREMIUM_GATES` in `lib/premium.ts` |
-| Audience vote link | free, deliberately: it is the acquisition loop |
+| Any host-supplied category (typed, handed off, saved deck) | premium since 0033 — free is the premade shelf |
+| Public audience vote link | **free, deliberately: it is the acquisition loop.** 0033 gated it, 0034 put it back |
 
 **The watermark is opt-out, and that is a product decision, not an oversight.**
 `df20_export_style(code)` resolves it server-side from the room's host profile.
@@ -412,8 +423,20 @@ Framer Motion is imported **only** by the landing scroll sequence, via
 - **The signed-in gated path is unproven end to end.** Rejection cases are
   verified; a real authenticated success is not, because email confirmation
   blocked creating a test account.
-- **`lib/site.ts`** still has placeholder operator name, contact email and
-  jurisdiction. The privacy policy and terms reference them.
+- **`lib/site.ts`** contact email is `support@draftfor20.com`, but **that
+  mailbox does not exist yet** — no MX record has been created for
+  `draftfor20.com`, and mail to it bounces. Operator name and jurisdiction are
+  still placeholders. The privacy policy, terms and footer reference all of
+  these. Setup steps are in `DEPLOY.md`.
+- **Support is email-only and there is no phone number in this codebase.** The
+  support phone Stripe prints on receipts is a field in their dashboard, not a
+  constant here. Do not add one back — a number rendered by the site is a
+  number someone expects an answer on. See `DEPLOY.md`.
+- **The canonical origin is `https://www.draftfor20.com`.** The apex
+  308-redirects to www at Cloudflare, so anything that must match EXACTLY —
+  Supabase's redirect allowlist, Stripe's webhook endpoint and return URLs —
+  has to use the www form or it is handed a redirect it will not follow.
+  Cloudflare proxies to Vercel; `x-vercel-id` is present on responses.
 - **Stripe has never run.** The framework is complete and the no-keys path is
   verified end to end, but no real checkout, webhook or subscription lifecycle
   has been exercised against Stripe. `periodEnd()` in the webhook reads the

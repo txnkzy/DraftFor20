@@ -1,5 +1,6 @@
 import "server-only";
 import Stripe from "stripe";
+import { SITE_URL } from "@/lib/site";
 
 /**
  * Stripe, optional by design.
@@ -33,7 +34,9 @@ export function stripeEnv(): StripeEnv {
     priceId: read("STRIPE_PRICE_ID"),
     passPriceId: read("STRIPE_PASS_PRICE_ID"),
     billingSecret: read("DF20_BILLING_SECRET"),
-    siteUrl: read("NEXT_PUBLIC_SITE_URL") || "http://localhost:3000",
+    // canonical www: the apex 308-redirects, and Stripe does not follow a
+    // redirect on a return URL — it just lands the customer on one
+    siteUrl: read("NEXT_PUBLIC_SITE_URL") || SITE_URL,
   };
 }
 
@@ -90,5 +93,5 @@ export function siteOrigin(req?: Request): string {
       /* fall through */
     }
   }
-  return "http://localhost:3000";
+  return SITE_URL;
 }

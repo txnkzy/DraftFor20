@@ -41,6 +41,12 @@ const MESSAGES: Record<string, string> = {
   DF20_BAD_CONTENT_MODE: "That isn't a room layout.",
   DF20_NOT_YOUR_DECK: "That deck belongs to a different account.",
   DF20_NOT_AUTHORISED: "That isn't something this account can do.",
+  DF20_LAST_ADMIN:
+    "That's the only admin left. Give someone else admin access first, or the console locks everyone out.",
+  DF20_NO_SUCH_USER: "That account doesn't exist.",
+  DF20_BAD_HANDLE: "Handles are 3 to 20 characters: letters, numbers, dashes and underscores.",
+  DF20_RESERVED_HANDLE: "That handle is reserved.",
+  DF20_HANDLE_TAKEN: "Somebody already has that handle.",
   DF20_NO_SUCH_CATEGORY: "That category isn't there any more.",
   DF20_BAD_ACCENT: "Accent colours are hex, like #F5B942.",
   DF20_BAD_LOGO_URL: "That logo has to be one you uploaded here.",

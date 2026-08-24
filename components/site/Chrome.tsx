@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CONTACT_EMAIL } from "@/lib/site";
 import { HeaderAccount } from "./HeaderAccount";
 
 export function Header({ thin = false }: { thin?: boolean }) {
@@ -12,9 +13,15 @@ export function Header({ thin = false }: { thin?: boolean }) {
         <Link href="/" className="type-display text-[0.9375rem] tracking-tight">
           Draft<span className="text-gold">For20</span>
         </Link>
-        <nav className="flex items-center gap-4">
+        <nav className="flex items-center gap-3 sm:gap-4">
           <Link href="/join" className="type-label text-muted hover:text-ink">
             Join
+          </Link>
+          <Link href="/20-dollar-draft" className="type-label text-muted hover:text-ink">
+            $20 Draft
+          </Link>
+          <Link href="/pricing" className="type-label text-muted hover:text-ink">
+            Pricing
           </Link>
           <HeaderAccount />
           <Link href="/new" className="type-label text-gold hover:text-ink">
@@ -31,12 +38,21 @@ export function Footer() {
     <footer className="mt-16 border-t rule">
       <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-5 gap-y-2 px-4 py-6">
         <span className="type-label text-muted">DraftFor20</span>
+        <Link href="/20-dollar-draft" className="text-[0.8125rem] text-muted hover:text-ink">
+          What is the $20 draft?
+        </Link>
         <Link href="/privacy" className="text-[0.8125rem] text-muted hover:text-ink">
           Privacy
         </Link>
         <Link href="/terms" className="text-[0.8125rem] text-muted hover:text-ink">
           Terms
         </Link>
+        <a
+          href={`mailto:${CONTACT_EMAIL}`}
+          className="text-[0.8125rem] text-muted hover:text-ink"
+        >
+          Support
+        </a>
         <span className="ml-auto text-[0.75rem] text-muted/70">
           Play money. No wagering, no payouts.
         </span>

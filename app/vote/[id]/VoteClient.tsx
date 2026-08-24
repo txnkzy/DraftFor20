@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/Button";
 import { Footer } from "@/components/site/Chrome";
 import { formatCents } from "@/lib/money";
 import { seatAccent } from "@/lib/game/view";
-import { useAudienceTally } from "@/lib/game/useAudienceTally";
 
 interface Row {
   pick: number;
@@ -46,6 +45,44 @@ interface VoteState {
  * who just spent thirty seconds arguing about two rosters is exactly the
  * person who wants to build one.
  */
+interface Tally {
+  total: number;
+  by_player: Record<string, number>;
+}
+
+/** every POLL_MS, with jitter so a thousand tabs do not align into a spike */
+const POLL_MS = 4000;
+const JITTER_MS = 1200;
+
+function usePolledTally(roomRef: string, enabled: boolean): Tally | null {
+  const [tally, setTally] = useState<Tally | null>(null);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const tick = async () => {
+      try {
+        const res = await fetch(`/api/vote/${roomRef}/tally`, { cache: "no-store" });
+        const d = (await res.json()) as { status?: string; tally?: Tally };
+        if (!stopped && d.status === "open" && d.tally) setTally(d.tally);
+      } catch {
+        /* a dropped poll is a stale number for four seconds, nothing more */
+      }
+      if (!stopped) timer = setTimeout(() => void tick(), POLL_MS + Math.random() * JITTER_MS);
+    };
+
+    timer = setTimeout(() => void tick(), Math.random() * JITTER_MS);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [roomRef, enabled]);
+
+  return tally;
+}
+
 export function VoteClient({ roomRef }: { roomRef: string }) {
   const [s, setS] = useState<VoteState | null>(null);
   const [busy, setBusy] = useState(false);
@@ -90,12 +127,14 @@ export function VoteClient({ roomRef }: { roomRef: string }) {
     setBusy(false);
   }
 
-  /* Subscribed only AFTER voting. The payload of that broadcast is the
-     tally itself, so subscribing earlier would hand a viewer the answer the
-     blind rule says they have to pay for first. */
+  /* POLLED, NOT PUSHED. A realtime connection per spectator is the one thing
+     here that scales with an audience rather than with players, so a viral
+     link could exhaust the connection budget on its own. A number that moves
+     every few seconds does not need a websocket; the bid war does, and keeps
+     one. Polling starts only after voting, so the blind rule is unchanged. */
   const hasVoted = Boolean(s?.your_vote);
-  const pushed = useAudienceTally(s?.room_id, hasVoted);
-  const tally = pushed ?? s?.tally ?? null;
+  const polled = usePolledTally(roomRef, hasVoted);
+  const tally = polled ?? s?.tally ?? null;
   const total = tally?.total ?? 0;
 
   if (!s) {
@@ -111,9 +150,11 @@ export function VoteClient({ roomRef }: { roomRef: string }) {
       <main className="mx-auto grid min-h-dvh w-full max-w-md place-items-center px-4 text-center">
         <div>
           <h1 className="type-display text-[1.75rem]">
-            {s.status === "not_finished" ? "This draft isn't finished" : `Nothing to judge at ${s.code ?? roomRef}`}
+            {s.status === "not_finished"
+              ? "This draft isn't finished"
+              : `Nothing to judge at ${s.code ?? roomRef}`}
           </h1>
-          <p className="mt-2 text-[0.9375rem] text-muted">
+          <p className="mt-2 text-[0.9375rem] leading-relaxed text-muted">
             {s.status === "not_finished"
               ? "Come back when both rosters are full."
               : "That link doesn't match a finished draft."}

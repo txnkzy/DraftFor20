@@ -1,15 +1,33 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ScrollBidWarLoader } from "@/components/site/ScrollBidWarLoader";
+import { SITE_URL } from "@/lib/site";
 import { ReserveDiagram } from "@/components/site/ReserveDiagram";
 import { ShareCard } from "@/components/results/ShareCard";
 import { Footer, Header } from "@/components/site/Chrome";
 import { SAMPLE_CARD } from "@/lib/demo/sample";
 
-export const metadata: Metadata = {
-  title: "DraftFor20 — the $20 football auction",
+const schema = {
+  "@context": "https://schema.org",
+  "@type": "VideoGame",
+  name: "DraftFor20",
+  alternateName: ["The $20 Draft", "$20 Draft Game"],
+  url: SITE_URL,
   description:
-    "A live two-player auction. The deck deals an NFL name, you fight over what it is worth, and the board settles the argument.",
+    "A live head-to-head auction draft game for any category. Two players split a fixed bankroll across a hidden deck, bidding under a server-run clock.",
+  applicationCategory: "GameApplication",
+  operatingSystem: "Web browser",
+  gamePlatform: "Web browser",
+  playMode: "MultiPlayer",
+  numberOfPlayers: { "@type": "QuantitativeValue", minValue: 2, maxValue: 2 },
+  genre: ["Party game", "Auction", "Strategy"],
+  offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+};
+
+export const metadata: Metadata = {
+  title: "DraftFor20 — the $20 auction draft game for any category",
+  description:
+    "A live head-to-head auction draft on any category — football, movies, or one you type yourself. Two players, $20 each, and a card worth sharing.",
 };
 
 const STEPS = [
@@ -47,6 +65,10 @@ const HOST_CONTROLS: [string, string][] = [
 export default function Home() {
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+      />
       <Header />
 
       <main>
@@ -56,8 +78,9 @@ export default function Home() {
             You don&apos;t pick. You pay.
           </h1>
           <p className="mt-5 max-w-xl text-[1.0625rem] leading-relaxed text-muted">
-            DraftFor20 deals you a name and starts a clock. There are no positions and no
-            rankings, so nothing in the app tells you who is good. That argument is the game.
+            DraftFor20 is a head-to-head auction draft game: it deals you a name and starts a
+            clock. There are no positions and no rankings, so nothing in the app tells you who
+            is good. That argument is the game.
           </p>
           <div className="mt-7 flex flex-wrap gap-2">
             <Link href="/new" className="btn btn-primary h-14 px-6 text-[0.9375rem]">

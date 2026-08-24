@@ -6,7 +6,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Field, TextInput } from "@/components/ui/Field";
 import { Footer, Header, SetupNotice } from "@/components/site/Chrome";
-import { signInWithPassword } from "@/lib/auth";
+import { safeNext, signInWithPassword } from "@/lib/auth";
 import { supabaseConfigured } from "@/lib/supabase/client";
 
 export function LoginClient() {
@@ -25,8 +25,8 @@ function Login() {
 
   const next =
     typeof window === "undefined"
-      ? "/host"
-      : new URLSearchParams(window.location.search).get("next") || "/host";
+      ? "/"
+      : safeNext(new URLSearchParams(window.location.search).get("next"));
 
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
 

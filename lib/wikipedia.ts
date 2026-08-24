@@ -11,7 +11,7 @@
  */
 
 const API = "https://en.wikipedia.org/w/api.php";
-const UA = "DraftFor20/1.0 (https://draftfor20.vercel.app; hello@draftfor20.app)";
+const UA = "DraftFor20/1.0 (https://www.draftfor20.com; support@draftfor20.com)";
 
 export interface WikiItem {
   /** display text, exactly as it was played before images existed */
@@ -201,4 +201,75 @@ export async function fetchCategory(query: string, minItems: number): Promise<Wi
     // same answer to the caller, which is "no result"
     return null;
   }
+}
+
+/* ── popularity, batched ───────────────────────────────────────────────────
+   A parsed "List of X" article is in article order, which has nothing to do
+   with whether anybody recognises the entries. This ranks them by how much
+   the English Wikipedia article for each is actually read.
+
+   action=query&prop=pageviews takes FIFTY titles per request and answers with
+   60 days of dailies for each, so a 200-item list costs four calls rather
+   than two hundred. It also marks a title `missing` when there is no article
+   at all, which is the same signal as "nobody can look this up" — those sink
+   below anything with a real number instead of being dropped, so a list of
+   otherwise unmeasurable items still produces a playable pool.            */
+
+export interface RankedItems {
+  items: string[];
+  /** false when pageviews could not be consulted and length order was used */
+  filtered: boolean;
+}
+
+const PV_BATCH = 50;
+
+export async function rankByPageviews(items: string[], keep: number): Promise<RankedItems> {
+  if (items.length <= keep) return { items, filtered: false };
+
+  const views = new Map<string, number>();
+  let answered = false;
+
+  for (let i = 0; i < items.length; i += PV_BATCH) {
+    const batch = items.slice(i, i + PV_BATCH);
+    try {
+      const data = (await api({
+        action: "query",
+        prop: "pageviews",
+        titles: batch.join("|"),
+        formatversion: "2",
+      })) as {
+        query?: {
+          pages?: { title?: string; missing?: boolean; pageviews?: Record<string, number | null> }[];
+          normalized?: { from: string; to: string }[];
+        };
+      };
+
+      // the API normalises titles ("tom brady" -> "Tom Brady"), so the answer
+      // has to be mapped back to the string we asked about
+      const back = new Map<string, string>();
+      for (const n of data.query?.normalized ?? []) back.set(n.to, n.from);
+
+      for (const p of data.query?.pages ?? []) {
+        const title = p.title ?? "";
+        const asked = back.get(title) ?? title;
+        if (p.missing) continue; // no article: leave it unscored
+        const total = Object.values(p.pageviews ?? {}).reduce<number>(
+          (t, v) => t + (v ?? 0),
+          0,
+        );
+        views.set(asked, total);
+        answered = true;
+      }
+    } catch {
+      // one bad batch does not sink the list; carry on with what we have
+    }
+  }
+
+  // Nothing came back at all — API down, rate limited, or a list of things
+  // Wikipedia has no articles for. Fall back to the parsed order, capped, and
+  // say so, because a silent fallback-of-a-fallback is one nobody ever fixes.
+  if (!answered) return { items: items.slice(0, keep), filtered: false };
+
+  const ranked = [...items].sort((a, b) => (views.get(b) ?? -1) - (views.get(a) ?? -1));
+  return { items: ranked.slice(0, keep), filtered: true };
 }

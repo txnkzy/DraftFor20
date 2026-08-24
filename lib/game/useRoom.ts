@@ -93,10 +93,16 @@ export function useRoom(code: string, seat: Seat | null) {
     };
   }, [sb, code, apply]);
 
-  /* ── realtime fast path ─────────────────────────────────────────────── */
+  /* ── realtime fast path, FOR THE PEOPLE PLAYING ──────────────────────
+     A seat is bounded at two per room. A spectator is not: share a room link
+     widely and every viewer used to open a websocket, which is the same way
+     the vote page could exhaust the realtime budget on one popular room.
+     Whoever is actually bidding needs sub-second state; whoever is watching
+     can take it from the poll below. */
   const roomId = state?.room.id;
+  const seated = Boolean(seat?.sessionToken);
   useEffect(() => {
-    if (!roomId) return;
+    if (!roomId || !seated) return;
     const channel = sb
       .channel(`room:${roomId}`)
       .on("broadcast", { event: "state" }, (msg) => apply(msg.payload))
@@ -104,15 +110,20 @@ export function useRoom(code: string, seat: Seat | null) {
     return () => {
       void sb.removeChannel(channel);
     };
-  }, [sb, roomId, apply]);
+  }, [sb, roomId, seated, apply]);
 
   /* ── poll fallback. Tight while a lot is live, lazy otherwise. ──────── */
   const phase = state?.room.phase;
   useEffect(() => {
     const live = phase === "offering" || phase === "bidding";
-    const id = setInterval(() => void refresh(), live ? 2500 : 7000);
+    // A player polls as a backstop behind realtime. A spectator polls as
+    // their ONLY channel, so it runs a little slower on purpose: a thousand
+    // watchers at 2.5s is a lot of full board snapshots to serve, and nobody
+    // watching a bid war needs it to the half second.
+    const every = seated ? (live ? 2500 : 7000) : (live ? 5000 : 12000);
+    const id = setInterval(() => void refresh(), every);
     return () => clearInterval(id);
-  }, [phase, refresh]);
+  }, [phase, refresh, seated]);
 
   /* ── timer expiry driver ────────────────────────────────────────────────
      Whichever client's countdown hits zero calls expire_turn. It is
@@ -153,6 +164,8 @@ export function useRoom(code: string, seat: Seat | null) {
         }),
       vote: (winnerPlayerId: string) =>
         call("submit_vote", { p_token: token, p_winner_player_id: winnerPlayerId }),
+      /** ends the room for both people; see LeaveRoom for the confirmation */
+      leave: () => call("leave_room", { p_token: token }),
     }),
     [call, token],
   );

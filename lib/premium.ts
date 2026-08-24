@@ -115,23 +115,25 @@ export function usePremium(): PremiumState & { refresh: () => Promise<void> } {
 }
 
 /**
- * Which features the paywall actually covers today.
+ * Which features the paywall covers.
  *
- * `customCategories` is deliberately false. Typing your own category has been
- * free-with-an-account since 0015 and taking that away the day payments do
- * not exist yet would be a downgrade for people already using it. The check
- * is wired and tested; flipping this to true is the whole change.
+ * Free is the premade shelf and nothing else. Every flag here is mirrored by
+ * a check in the database — these only decide what the UI shows, and 0033 is
+ * what actually refuses the request.
  */
 export const PREMIUM_GATES = {
   contentTab: true,
   obsLink: true,
   exportCustomisation: true,
-  customCategories: false,
+  customCategories: true,
+  /** the public vote link is free — it is the acquisition loop. Only the
+   *  host's live tally in the Content tab is premium. */
+  audienceVote: false,
 } as const;
 
 export const PLANS = {
   premium: { label: "Premium", price: "$5", period: "/month" },
-  pass: { label: "Game Night Pass", price: "$2", period: "for 24 hours" },
+  pass: { label: "Game Night Pass", price: "$1", period: "for 24 hours" },
 } as const;
 
 export type PlanId = keyof typeof PLANS;

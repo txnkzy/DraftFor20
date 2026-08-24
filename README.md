@@ -183,6 +183,56 @@ To run all of it with no Supabase project, see
 
 ---
 
+## Working on this with someone else
+
+Two people share `main`, so the rule is **pull before you touch anything,
+push when you stop**. A Claude Code session on Logan's machine does both
+automatically via hooks in `~/.claude/hooks/`:
+
+| When | What runs |
+|---|---|
+| session start | `git pull --rebase --autostash`, and report the live deploy |
+| end of a turn | commit anything loose → **`npm run build`** → push |
+
+The build gate is the important half. Work is always committed locally so
+nothing is lost, but a tree that does not build stays on that machine rather
+than landing on the branch you are about to pull — and, since a push now ships
+to production, rather than landing on the live site.
+
+It is a full `next build` rather than `tsc --noEmit` for a reason: a missing
+Suspense boundary around `useSearchParams`, a bad route export, a prerender
+failure — none of those are type errors, and all of them break the deployed
+site. It takes about eight seconds and only runs when something changed.
+
+### Deploys
+
+**The Vercel project is connected to this repo, so pushing is deploying.**
+Every push to `main` — from either of us, from any machine — builds and goes
+live on www.draftfor20.com. There is no separate deploy step and nothing to
+remember.
+
+The session-start hook reports the latest production deployment straight from
+Vercel, so a session opens knowing what is actually live, including anything
+the other person shipped overnight.
+
+If you need the state by hand:
+
+```bash
+npx vercel ls --prod
+```
+
+Note that the readable table is on **stderr** — stdout carries bare URLs. Pipe
+with `2>&1` or you will parse nothing.
+
+### The one thing that will bite you
+
+`supabase/APPLY_V7.sql` is generated. Edit files in `supabase/migrations/`
+and run `./supabase/build-bundle.sh`; a hand-edit to the bundle is overwritten
+the next time anyone rebuilds it. Two people editing the same migration number
+is the merge conflict to avoid — take the next free number instead.
+
+---
+
 ## Premium, and how access is decided
 
 There is exactly **one** rule, in one place: an account has premium while

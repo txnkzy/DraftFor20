@@ -23,7 +23,7 @@ export async function GET() {
       pass: s.pass,
       plans: {
         premium: { price: "$5", period: "/month", available: s.subscription },
-        pass: { price: "$2", period: "for 24 hours", available: s.pass },
+        pass: { price: "$1", period: "for 24 hours", available: s.pass },
       },
     },
     { headers: { "Cache-Control": "no-store" } },
