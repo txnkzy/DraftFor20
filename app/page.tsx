@@ -7,9 +7,9 @@ import { Footer, Header } from "@/components/site/Chrome";
 import { SAMPLE_CARD } from "@/lib/demo/sample";
 
 export const metadata: Metadata = {
-  title: "DraftFor20 — the $20 football auction",
+  title: "DraftFor20 — the $20 auction draft game for any category",
   description:
-    "A live two-player auction. The deck deals an NFL name, you fight over what it is worth, and the board settles the argument.",
+    "A live head-to-head auction draft on any category — football, movies, or one you type yourself. Two players, $20 each, and a card worth sharing.",
 };
 
 const STEPS = [
@@ -56,8 +56,9 @@ export default function Home() {
             You don&apos;t pick. You pay.
           </h1>
           <p className="mt-5 max-w-xl text-[1.0625rem] leading-relaxed text-muted">
-            DraftFor20 deals you a name and starts a clock. There are no positions and no
-            rankings, so nothing in the app tells you who is good. That argument is the game.
+            DraftFor20 is a head-to-head auction draft game: it deals you a name and starts a
+            clock. There are no positions and no rankings, so nothing in the app tells you who
+            is good. That argument is the game.
           </p>
           <div className="mt-7 flex flex-wrap gap-2">
             <Link href="/new" className="btn btn-primary h-14 px-6 text-[0.9375rem]">
