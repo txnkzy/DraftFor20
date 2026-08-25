@@ -91,11 +91,22 @@ export async function pageImages(
       format: "json",
     });
     try {
-      const res = await fetch(`${WP}?${params}`, {
-        headers: { "User-Agent": UA },
-        cache: "no-store",
-      });
-      if (!res.ok) continue;
+      // RETRY, because the failure is silent and total. A batch is 50 titles;
+      // one 429 from a sustained run used to cost all fifty their picture and
+      // report nothing, which is how a whole category came back with zero
+      // images while a hand check of the same names showed 100% coverage.
+      let res: Response | null = null;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        res = await fetch(`${WP}?${params}`, {
+          headers: { "User-Agent": UA },
+          cache: "no-store",
+        });
+        if (res.ok) break;
+        if (res.status !== 429 && res.status < 500) break; // a real error, not load
+        const retryAfter = Number(res.headers.get("retry-after")) || 0;
+        await new Promise((r) => setTimeout(r, Math.max(retryAfter * 1000, 800 * (attempt + 1))));
+      }
+      if (!res || !res.ok) continue;
       const json = (await res.json()) as {
         query?: {
           pages?: Record<string, { title?: string; thumbnail?: { source?: string } }>;

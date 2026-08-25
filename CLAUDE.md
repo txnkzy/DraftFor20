@@ -113,7 +113,7 @@ rule makes them earn.
 
 | Source | Free? | How |
 |---|---|---|
-| `library` | yes | 28 premade categories, 1,571 items |
+| `library` | yes | 32 premade categories, 1,829 items |
 | `wikipedia` | **account** | trigram match, then parse a "List of …" article |
 | `manual` | **account** | third party builds the list via a setup link |
 | `saved` | **account** | a deck the host kept from an earlier draft, reshuffled |
@@ -138,6 +138,22 @@ vowels literally — *Tanjirou*, *Kyoujurou*, *Giyuu* — which every English
 release drops, so the generator strips them. Both are per-series settings in
 `SERIES`, with a `renames` map for the handful neither rule gets right
 (*Clown, Caesar* is Caesar Clown; *Might, Guy* is not Guy Might).
+
+**The sports categories are Commons-only, and that is a licensing decision.**
+`lib/espn.ts` takes the ROSTER from ESPN and nothing else — a roster is a set
+of facts and facts are not copyrightable, a photograph is. ESPN's headshot CDN
+would give 100% coverage and no right to use any of it, so every picture in
+NFL/NBA Players comes through the cascade under `freeOnly` and is stored
+`'free'`, unlike the anime categories which are fair-use `'nonfree'`.
+Regenerate with `SEED=1 npx vitest run lib/espn.seed.test.ts`. **Current
+rosters go stale** — re-run after a trade deadline.
+
+**Never rank players by their bare name.** Wikipedia pageviews for "Bill
+Murray" are the actor's, and there is a real NFL lineman by that name, so he
+placed third in the league. The generator verifies the article FIRST
+(Wikidata P641 sport + P54 team), then re-ranks on the resolved title. A short
+`CROSS_SPORT_NAMESAKES` list catches the last few, because "Michael Jordan
+(offensive lineman)" still inherits traffic across a disambiguated name.
 
 **Two providers, and they are good at different things.** Jikan (MyAnimeList)
 has a `favorites` count, so a series it can serve is ranked by popularity and

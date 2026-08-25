@@ -21,13 +21,36 @@
 
 import type { WikiItem } from "./wikipedia";
 
-const ESPN = "https://site.api.espn.com/apis/site/v2/sports/football/nfl";
+/**
+ * Two leagues, and the differences are not cosmetic:
+ *
+ *   path    ESPN namespaces the site API by sport
+ *   sport   the Wikidata P641 value that proves a candidate article is the
+ *           right KIND of athlete. Without it the NBA lookup for "Anthony
+ *           Edwards" returns the ER actor, who holds the bare title.
+ *   hint    appended to the Wikipedia search so relevance ranking starts in
+ *           the right universe
+ */
+export type League = "nfl" | "nba";
+
+const LEAGUES: Record<League, { path: string; sport: string; hint: string }> = {
+  nfl: { path: "football/nfl", sport: "Q41323", hint: "American football" },
+  nba: { path: "basketball/nba", sport: "Q5372", hint: "basketball" },
+};
+
+const espnBase = (league: League) =>
+  `https://site.api.espn.com/apis/site/v2/sports/${LEAGUES[league].path}`;
 const WP = "https://en.wikipedia.org/w/api.php";
 const WD = "https://www.wikidata.org/w/api.php";
+/**
+ * Wikimedia asks for a descriptive User-Agent and ESPN refuses one: the site
+ * API answers 403 to "DraftFor20/1.0 …" and 200 to a browser string or to no
+ * UA at all. Verified against both /football/nfl/teams and /basketball/nba/teams.
+ * So the honest UA goes to Wikimedia, who want it, and ESPN gets none.
+ */
 const UA = "DraftFor20/1.0 (https://draftfor20.vercel.app; hello@draftfor20.app)";
 
 const HUMAN = "Q5";
-const AMERICAN_FOOTBALL = "Q41323";
 
 export interface NflPlayer {
   name: string;
@@ -36,14 +59,18 @@ export interface NflPlayer {
 }
 
 async function json(url: string): Promise<unknown> {
-  const res = await fetch(url, { headers: { "User-Agent": UA }, cache: "no-store" });
+  const espn = new URL(url).host.endsWith("espn.com");
+  const res = await fetch(url, {
+    headers: espn ? {} : { "User-Agent": UA },
+    cache: "no-store",
+  });
   if (!res.ok) throw new Error(`${new URL(url).host} ${res.status}`);
   return res.json();
 }
 
-/** Every current NFL team, as ESPN ids. */
-export async function fetchTeams(): Promise<{ id: string; name: string }[]> {
-  const j = (await json(`${ESPN}/teams`)) as {
+/** Every current team in a league, as ESPN ids. */
+export async function fetchTeams(league: League = "nfl"): Promise<{ id: string; name: string }[]> {
+  const j = (await json(`${espnBase(league)}/teams`)) as {
     sports?: { leagues?: { teams?: { team?: { id?: string; displayName?: string } }[] }[] }[];
   };
   const raw = j.sports?.[0]?.leagues?.[0]?.teams ?? [];
@@ -52,15 +79,25 @@ export async function fetchTeams(): Promise<{ id: string; name: string }[]> {
     .filter((t) => t.id && t.name);
 }
 
-/** One team's active roster. */
-export async function fetchRoster(teamId: string): Promise<NflPlayer[]> {
-  const j = (await json(`${ESPN}/teams/${encodeURIComponent(teamId)}/roster`)) as {
+/**
+ * One team's active roster.
+ *
+ * THE TWO LEAGUES RETURN DIFFERENT SHAPES. NFL groups athletes by position, so
+ * `athletes` is [{items:[...]}]; NBA returns a flat array of athletes. Reading
+ * only the NFL shape gives zero NBA players and no error at all, which is how
+ * a whole league can quietly come back empty.
+ */
+export async function fetchRoster(teamId: string, league: League = "nfl"): Promise<NflPlayer[]> {
+  const j = (await json(`${espnBase(league)}/teams/${encodeURIComponent(teamId)}/roster`)) as {
     team?: { displayName?: string };
-    athletes?: { items?: { fullName?: string; position?: { abbreviation?: string } }[] }[];
+    athletes?: unknown;
   };
   const team = j.team?.displayName ?? "";
-  return (j.athletes ?? [])
-    .flatMap((g) => g.items ?? [])
+  const raw = (j.athletes ?? []) as { items?: unknown[] }[];
+  const flat = (Array.isArray(raw) && raw.length && raw[0]?.items
+    ? raw.flatMap((g) => g.items ?? [])
+    : raw) as { fullName?: string; position?: { abbreviation?: string } }[];
+  return flat
     .map((a) => ({
       name: (a.fullName ?? "").trim(),
       position: a.position?.abbreviation ?? null,
@@ -70,7 +107,7 @@ export async function fetchRoster(teamId: string): Promise<NflPlayer[]> {
 }
 
 /** Team display name -> Wikidata QID, resolved rather than hardcoded. */
-async function teamQid(teamName: string): Promise<string | null> {
+export async function teamQid(teamName: string): Promise<string | null> {
   try {
     const j = (await json(
       `${WP}?${new URLSearchParams({
@@ -163,6 +200,7 @@ async function inspect(titles: string[]): Promise<Candidate[]> {
 export async function resolvePlayerTitle(
   player: NflPlayer,
   teamKey: string | null,
+  league: League = "nfl",
 ): Promise<string | null> {
   let titles: string[];
   try {
@@ -170,7 +208,7 @@ export async function resolvePlayerTitle(
       `${WP}?${new URLSearchParams({
         action: "query",
         list: "search",
-        srsearch: `${player.name} American football`,
+        srsearch: `${player.name} ${LEAGUES[league].hint}`,
         srlimit: "6",
         format: "json",
       })}`,
@@ -183,15 +221,52 @@ export async function resolvePlayerTitle(
   }
 
   const cands = await inspect(titles);
-  const footballers = cands.filter((c) => c.human && c.sports.includes(AMERICAN_FOOTBALL));
+  let footballers = cands.filter((c) => c.human && c.sports.includes(LEAGUES[league].sport));
+
+  // THE NAME HAS TO MATCH. Relevance order alone is not a check: searching
+  // "Miles Davis American football" returned TERRELL DAVIS, a different man
+  // entirely, and the blind `footballers[0]` fallback put his photograph on a
+  // card labelled Miles Davis. Surname alone is not enough either — that is
+  // exactly what Miles/Terrell Davis share.
+  //
+  // First name must match; surname must match or contain, because the
+  // Jaguars' Josh Allen is at "Josh Hines-Allen".
+  footballers = footballers.filter((c) => sameName(player.name, c.title));
+
+  // Prefer an actual PLAYER. P54 is "member of sports team"; coaches have a
+  // different property, so a coach survives the sport filter with no teams.
+  // "Bill Murray" resolved to "Bill Murray (American football coach)".
+  const players = footballers.filter((c) => c.teams.length > 0);
+  const pool = players.length ? players : footballers;
 
   if (teamKey) {
-    const exact = footballers.find((c) => c.teams.includes(teamKey));
+    const exact = pool.find((c) => c.teams.includes(teamKey));
     if (exact) return exact.title;
   }
   // search order is relevance order, so the first surviving candidate is the
   // best remaining guess
-  return footballers[0]?.title ?? null;
+  return pool[0]?.title ?? null;
+}
+
+/** Strip the disambiguating parenthetical and fold accents/punctuation. */
+function norm(s: string): string {
+  return s
+    .replace(/\s*\([^)]*\)\s*$/, "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z\s-]/g, "")
+    .trim();
+}
+
+function sameName(playerName: string, title: string): boolean {
+  const a = norm(playerName).split(/\s+/).filter(Boolean);
+  const b = norm(title).split(/\s+/).filter(Boolean);
+  if (!a.length || !b.length) return false;
+  if (a[0] !== b[0]) return false; // Miles != Terrell
+  const la = a[a.length - 1];
+  const lb = b[b.length - 1];
+  return la === lb || la.includes(lb) || lb.includes(la); // Allen ~ Hines-Allen
 }
 
 /**
@@ -202,8 +277,11 @@ export async function resolvePlayerTitle(
  * resolver draws a generated card for them, and they are also exactly the
  * players nobody would bid on.
  */
-export async function fetchNflRosterItems(teamId: string): Promise<WikiItem[]> {
-  const roster = await fetchRoster(teamId);
+export async function fetchNflRosterItems(
+  teamId: string,
+  league: League = "nfl",
+): Promise<WikiItem[]> {
+  const roster = await fetchRoster(teamId, league);
   if (!roster.length) return [];
   const teamKey = await teamQid(roster[0].team);
 
@@ -211,7 +289,7 @@ export async function fetchNflRosterItems(teamId: string): Promise<WikiItem[]> {
   // sequential on purpose: two requests per player against two public APIs
   // that are being used as a courtesy, not under a contract
   for (const p of roster) {
-    out.push({ name: p.name, title: await resolvePlayerTitle(p, teamKey) });
+    out.push({ name: p.name, title: await resolvePlayerTitle(p, teamKey, league) });
   }
   return out;
 }

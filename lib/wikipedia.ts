@@ -159,11 +159,28 @@ export function parseArticleHtml(html: string, minItems = 1): WikiItem[] {
   return listItems.length >= tableItems.length ? listItems : tableItems;
 }
 
+/**
+ * Retries on 429 and 5xx, because every caller here batches and every caller
+ * swallows a failed batch. rankByPageviews scores 50 titles per request; a
+ * single rate-limited batch leaves all fifty unscored, and since it sorts
+ * unscored items last-but-stable the list silently degrades to the order it
+ * came in. That is how an NFL category came back alphabetical, with Bailey
+ * Zappe in it and Patrick Mahomes not.
+ *
+ * A 4xx that is not 429 is a real error and is not retried.
+ */
 async function api(params: Record<string, string>): Promise<unknown> {
   const url = `${API}?${new URLSearchParams({ ...params, format: "json", origin: "*" })}`;
-  const res = await fetch(url, { headers: { "User-Agent": UA }, cache: "no-store" });
-  if (!res.ok) throw new Error(`wikipedia ${res.status}`);
-  return res.json();
+  let last = 0;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const res = await fetch(url, { headers: { "User-Agent": UA }, cache: "no-store" });
+    if (res.ok) return res.json();
+    last = res.status;
+    if (res.status !== 429 && res.status < 500) break;
+    const retryAfter = Number(res.headers.get("retry-after")) || 0;
+    await new Promise((r) => setTimeout(r, Math.max(retryAfter * 1000, 800 * (attempt + 1))));
+  }
+  throw new Error(`wikipedia ${last}`);
 }
 
 /** null whenever anything is missing, malformed, or too thin to play with. */
