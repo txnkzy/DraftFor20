@@ -113,7 +113,7 @@ rule makes them earn.
 
 | Source | Free? | How |
 |---|---|---|
-| `library` | yes | 32 premade categories, 1,757 items (530 with pictures) |
+| `library` | yes | 32 premade categories, 1,742 items (615 with pictures) |
 | `wikipedia` | **account** | trigram match, then parse a "List of …" article |
 | `manual` | **account** | third party builds the list via a setup link |
 | `saved` | **account** | a deck the host kept from an earlier draft, reshuffled |
@@ -147,6 +147,13 @@ NFL/NBA Players comes through the cascade under `freeOnly` and is stored
 `'free'`, unlike the anime categories which are fair-use `'nonfree'`.
 Regenerate with `SEED=1 npx vitest run lib/espn.seed.test.ts`. **Current
 rosters go stale** — re-run after a trade deadline.
+
+**`prop=pageviews` answers for only SOME of the titles you ask about** and
+hands back a `continue` token for the rest. Reading the first response looked
+like it worked and was wrong in a way that inverted the results: McDonald's
+scored 0 while Auntie Anne's scored 12,506, and Joe Flacco outranked Patrick
+Mahomes. `rankByPageviews` follows the continuation now; anything ranked
+before that fix was ranked on roughly half its data.
 
 **A roster is not a draft.** NFL rosters run to 3,015 players and most of a
 roster is practice squad. Measured over 60 days of Wikipedia traffic the cast

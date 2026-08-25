@@ -249,33 +249,53 @@ export async function rankByPageviews(items: string[], keep: number): Promise<Ra
   for (let i = 0; i < items.length; i += PV_BATCH) {
     const batch = items.slice(i, i + PV_BATCH);
     try {
-      const data = (await api({
-        action: "query",
-        prop: "pageviews",
-        titles: batch.join("|"),
-        formatversion: "2",
-      })) as {
-        query?: {
-          pages?: { title?: string; missing?: boolean; pageviews?: Record<string, number | null> }[];
-          normalized?: { from: string; to: string }[];
+      // FOLLOW THE CONTINUATION. prop=pageviews answers for only a SUBSET of
+      // the titles asked for and hands back a `continue` token for the rest.
+      // Reading the first response only looked like it worked — it scored
+      // roughly half of each batch and left the others on zero, so the sort
+      // put genuinely popular pages below obscure ones. McDonald's scored 0
+      // while Auntie Anne's scored 12,506, and Joe Flacco outranked Patrick
+      // Mahomes, purely because of which half of the batch came back.
+      let cont: Record<string, string> | undefined;
+      for (let guard = 0; guard < 12; guard++) {
+        const data = (await api({
+          action: "query",
+          prop: "pageviews",
+          titles: batch.join("|"),
+          formatversion: "2",
+          redirects: "1",
+          ...(cont ?? {}),
+        })) as {
+          query?: {
+            pages?: { title?: string; missing?: boolean; pageviews?: Record<string, number | null> }[];
+            normalized?: { from: string; to: string }[];
+            redirects?: { from: string; to: string }[];
+          };
+          continue?: Record<string, string>;
         };
-      };
 
-      // the API normalises titles ("tom brady" -> "Tom Brady"), so the answer
-      // has to be mapped back to the string we asked about
-      const back = new Map<string, string>();
-      for (const n of data.query?.normalized ?? []) back.set(n.to, n.from);
+        // the API normalises titles ("tom brady" -> "Tom Brady") and follows
+        // redirects, so the answer has to be mapped back to what we asked
+        const back = new Map<string, string>();
+        for (const n of data.query?.normalized ?? []) back.set(n.to, n.from);
+        for (const r of data.query?.redirects ?? []) back.set(r.to, back.get(r.from) ?? r.from);
 
-      for (const p of data.query?.pages ?? []) {
-        const title = p.title ?? "";
-        const asked = back.get(title) ?? title;
-        if (p.missing) continue; // no article: leave it unscored
-        const total = Object.values(p.pageviews ?? {}).reduce<number>(
-          (t, v) => t + (v ?? 0),
-          0,
-        );
-        views.set(asked, total);
-        answered = true;
+        for (const p of data.query?.pages ?? []) {
+          const title = p.title ?? "";
+          const asked = back.get(title) ?? title;
+          if (p.missing) continue; // no article: leave it unscored
+          const total = Object.values(p.pageviews ?? {}).reduce<number>(
+            (t, v) => t + (v ?? 0),
+            0,
+          );
+          // a later page in the continuation can carry the real numbers, so
+          // only a positive total is allowed to overwrite what we have
+          if (total > 0 || !views.has(asked)) views.set(asked, total);
+          answered = true;
+        }
+
+        if (!data.continue) break;
+        cont = data.continue;
       }
     } catch {
       // one bad batch does not sink the list; carry on with what we have
