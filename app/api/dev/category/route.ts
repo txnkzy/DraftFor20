@@ -40,6 +40,13 @@ async function seeded(query: string, freeOnly: boolean) {
   const hit = data as { source: string; name: string; items: Row[] };
   if (!hit.items?.length) return null;
 
+  // A seeded category only wins if it actually HAS pictures. "NFL Teams" is
+  // seeded with names alone, so preferring it unconditionally replaced 32 team
+  // logos the live cascade finds perfectly well with 32 generated cards. The
+  // point of preferring seeded rows is to show curated art that the cascade
+  // would get WRONG, not to suppress art it gets right.
+  if (!hit.items.some((r) => r.image_url)) return null;
+
   return {
     query,
     article: hit.name,

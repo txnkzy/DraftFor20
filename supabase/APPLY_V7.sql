@@ -8858,14 +8858,28 @@ end $$;
 -- Re-runnable.
 -- ═══════════════════════════════════════════════════════════════════════════
 
--- ── NFL Players · 70 items
+
+-- df20_seed_category UPSERTS and never removes, so re-seeding a shrunken
+-- list would leave every dropped player behind.
+delete from public.category_library_items i
+ using public.category_library l
+ where l.id = i.library_id
+   and l.name_norm in (public.df20_norm_category('NFL Players'),
+                       public.df20_norm_category('NBA Players'),
+                       public.df20_norm_category('NFL All-Time Greats'),
+                       public.df20_norm_category('NBA All-Time Greats'));
+
+-- ── NFL Players · 37 items
 select public.df20_seed_category(
   'NFL Players',
-  string_to_array($it$Joe Flacco
+  string_to_array($it$Travis Kelce
+Joe Flacco
 Jayden Daniels
 Aaron Rodgers
+Stefon Diggs
 Baker Mayfield
 Patrick Mahomes
+Von Miller
 Josh Allen
 Fernando Mendoza
 Myles Garrett
@@ -8878,64 +8892,31 @@ Kyler Murray
 Brandon Aiyuk
 Kirk Cousins
 Drew Allar
+Sam Darnold
 Christian McCaffrey
 Matthew Stafford
 Lamar Jackson
 Jameis Winston
 Jamal Adams
+Tua Tagovailoa
+Vita Vea
 Saquon Barkley
 Derrick Henry
 Justin Fields
 Maxx Crosby
+Trevon Diggs
 Jalen Hurts
 Jadeveon Clowney
 Dak Prescott
-Davante Adams
-Puka Nacua
-Shedeur Sanders
-Jahmyr Gibbs
-Jaxson Dart
-Darren Waller
-Geno Smith
-Caleb Williams
-Malik Willis
-Calais Campbell
-Cooper Kupp
-Joshua Dobbs
-George Kittle
-Justin Jefferson
-Najee Harris
-Kenny Pickett
-Mac Jones
-Jaxon Smith-Njigba
-Drake Maye
-Bijan Robinson
-Denzel Boston
-Penei Sewell
-Bradley Chubb
-Garrett Wilson
-Nic Scourton
-Nick Emmanwori
-Deion Jones
-Brett Rypien
-Kyle Trask
-Jameson Williams
-Brandon Aubrey
-Hendon Hooker
-Dre Greenlaw
-Taylen Green
-Graham Mertz
-Jarrett Stidham
-Germie Bernard
-Kaelon Black
-Drake London
-Reed Blankenship
-Marist Liufau$it$, E'\n'),
-  string_to_array($im$https://upload.wikimedia.org/wikipedia/commons/thumb/b/b8/Joe_Flacco_2025_Browns_Camp_%28cropped%29.jpg/960px-Joe_Flacco_2025_Browns_Camp_%28cropped%29.jpg
+Davante Adams$it$, E'\n'),
+  string_to_array($im$https://upload.wikimedia.org/wikipedia/commons/f/f5/Travis_Kelce_in_the_Oval_Office_of_the_White_House_on_June_5%2C_2023_-_P20230605AS-0902_%28cropped%29.jpg
+https://upload.wikimedia.org/wikipedia/commons/thumb/b/b8/Joe_Flacco_2025_Browns_Camp_%28cropped%29.jpg/960px-Joe_Flacco_2025_Browns_Camp_%28cropped%29.jpg
 https://upload.wikimedia.org/wikipedia/commons/3/37/Jayden_Daniels_2025.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/e/e8/AaronRodgersSteelers_%28cropped%29.jpg/960px-AaronRodgersSteelers_%28cropped%29.jpg
+https://upload.wikimedia.org/wikipedia/commons/thumb/c/ca/Stefon_Diggs_SEP2021_%28cropped%29.jpg/960px-Stefon_Diggs_SEP2021_%28cropped%29.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Baker_Mayfield_%28cropped%29.jpg/960px-Baker_Mayfield_%28cropped%29.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Patrick_Mahomes_%2851615475056%29.jpg/960px-Patrick_Mahomes_%2851615475056%29.jpg
+https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Commanders_Training_Camp_-_54752497153.jpg/960px-Commanders_Training_Camp_-_54752497153.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/9/95/Josh_Allen_SEPT2021_%28cropped2%29.jpg/960px-Josh_Allen_SEPT2021_%28cropped2%29.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/7/7a/2026-0117_Fernando_Mendoza.jpeg/960px-2026-0117_Fernando_Mendoza.jpeg
 https://upload.wikimedia.org/wikipedia/commons/thumb/b/b3/Myles_Garrett_%282021%29.jpg/960px-Myles_Garrett_%282021%29.jpg
@@ -8948,75 +8929,43 @@ https://upload.wikimedia.org/wikipedia/commons/5/51/Kyler_Murray_in_huddle_%2850
 https://upload.wikimedia.org/wikipedia/commons/thumb/b/bc/Brandon_Aiyuk_2020_%28cropped%29.jpg/960px-Brandon_Aiyuk_2020_%28cropped%29.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Cousins_2022.jpg/960px-Cousins_2022.jpg
 https://upload.wikimedia.org/wikipedia/commons/e/e4/DrewAllar.jpg
+https://upload.wikimedia.org/wikipedia/commons/thumb/4/42/Seattle_Seahawks_Super_Bowl_LX_parade_-_16_%28Sam_Darnold_crop%29.jpg/960px-Seattle_Seahawks_Super_Bowl_LX_parade_-_16_%28Sam_Darnold_crop%29.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/e/ee/Christian_McCaffrey_2019.jpg/960px-Christian_McCaffrey_2019.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/Stafford_6_731_%28cropped3%29.jpg/960px-Stafford_6_731_%28cropped3%29.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/0/08/149th_Preakness_%2853731145142%29_%28cropped%29.jpg/960px-149th_Preakness_%2853731145142%29_%28cropped%29.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/2/29/WFT_vs._Saints_%2851583434549%29.jpg/960px-WFT_vs._Saints_%2851583434549%29.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/2025_Raiders_at_Commanders_Jamal_Adams_%28cropped%29.jpg/960px-2025_Raiders_at_Commanders_Jamal_Adams_%28cropped%29.jpg
+https://upload.wikimedia.org/wikipedia/commons/1/11/Tua_Tagovailoa_Miami_Dolphins_at_New_Orleans_Saints_2021_%28cropped%29.jpg
+https://upload.wikimedia.org/wikipedia/commons/thumb/0/03/Vita_Vea_2021_%28cropped%29.jpg/960px-Vita_Vea_2021_%28cropped%29.jpg
 https://upload.wikimedia.org/wikipedia/commons/7/7c/Saquon_Barkley_112024.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/0/0a/Derrick_Henry_OCT2022_%28cropped%29.jpg/960px-Derrick_Henry_OCT2022_%28cropped%29.jpg
 https://upload.wikimedia.org/wikipedia/commons/4/4c/2025_NYJ_Media_Day_Justin_Fields_%28cropped%29.png
 https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/Maxx_Crosby_2025.jpg/960px-Maxx_Crosby_2025.jpg
+https://upload.wikimedia.org/wikipedia/commons/thumb/b/b4/Trevon_Diggs_December_2021_%28cropped%29.jpg/960px-Trevon_Diggs_December_2021_%28cropped%29.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/6/6e/Jalen_Hurts_11-14-22_%28cropped%29.jpg/960px-Jalen_Hurts_11-14-22_%28cropped%29.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/e/ed/Jadeveon_Clowney_%2851402747630%29.jpg/960px-Jadeveon_Clowney_%2851402747630%29.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/f/f9/Dak_Prescott_by_Gage_Skidmore.jpg/960px-Dak_Prescott_by_Gage_Skidmore.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/Davante_Adams_Packers_vs_WFT_OCT2021_%28cropped%29.jpg/960px-Davante_Adams_Packers_vs_WFT_OCT2021_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/c/c8/Puka_Nacua_FanDuel_Interview_%28cropped%29.png
-https://upload.wikimedia.org/wikipedia/commons/thumb/0/00/Shedeur_Sanders_8_23_2025_%28cropped%29.jpg/960px-Shedeur_Sanders_8_23_2025_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/4/49/JahmyrGibbs_%28cropped%29.jpg/960px-JahmyrGibbs_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/f/fe/Jaxson_Dart_2025.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/8/86/Darren_Waller_Visits_Nellis_%287441675%29_%28cropped%29.jpg/960px-Darren_Waller_Visits_Nellis_%287441675%29_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/Geno_Smith_Raiders_2025_%28cropped%29.jpg/960px-Geno_Smith_Raiders_2025_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/Caleb_Williams_%2854858668366%29_%28cropped%29.jpg/960px-Caleb_Williams_%2854858668366%29_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/6/61/Malik_Willis_interview.jpg/960px-Malik_Willis_interview.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/a/ad/Atlanta_Falcons_Calais_Campbell_MAY2023_Practice_%28cropped%29.png/960px-Atlanta_Falcons_Calais_Campbell_MAY2023_Practice_%28cropped%29.png
-https://upload.wikimedia.org/wikipedia/commons/thumb/5/51/Cooper_Kupp.jpg/960px-Cooper_Kupp.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/9/9d/Joshua_Dobbs_March_2018_2.jpg/960px-Joshua_Dobbs_March_2018_2.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/a/a8/George_Kittle_DSC08082_%2848940368597%29_%28cropped%29.jpg/960px-George_Kittle_DSC08082_%2848940368597%29_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/2/24/Jefferson_2022.jpg/960px-Jefferson_2022.jpg
-https://upload.wikimedia.org/wikipedia/commons/d/dc/NajeeHarris2022.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/3/3c/Kenny_Pickett_by_Gage_Skidmore.jpg/960px-Kenny_Pickett_by_Gage_Skidmore.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/Mac_1237_%281%29_%282%29.jpg/960px-Mac_1237_%281%29_%282%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/f/f3/Jaxon_Smith-Njigba_FanDuel_Interview_%28cropped%29.png
-https://upload.wikimedia.org/wikipedia/commons/f/f5/Drake_Maye_Patriots_vs_Titans_NOV2024.png_%28section%29_%28cropped%29.png
-https://upload.wikimedia.org/wikipedia/commons/thumb/e/e2/Bijan_Robinson_2025.jpg/960px-Bijan_Robinson_2025.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/Denzel_Boston.jpg/960px-Denzel_Boston.jpg
-https://upload.wikimedia.org/wikipedia/commons/9/9d/Penei_Sewell_%2852480402764%29_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/6/66/Bradley_Chubb_2025.jpg/960px-Bradley_Chubb_2025.jpg
-https://upload.wikimedia.org/wikipedia/commons/4/41/2025_NYJ_offseason_-_Garrett_Wilson_interview_%28cropped%29.png
-https://upload.wikimedia.org/wikipedia/commons/2/28/NicScourton.jpg
-https://upload.wikimedia.org/wikipedia/commons/4/49/Nick_Emmanwori_-_54062156776_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/2/22/Deion_Jones_Falcons-WFT_October_2021_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/e/e0/2017-0726-MW-BrettRypien.jpg
-https://upload.wikimedia.org/wikipedia/commons/3/33/Kyle_Trask.jpg
-https://upload.wikimedia.org/wikipedia/commons/0/0a/Jameson_Williams.png
-https://upload.wikimedia.org/wikipedia/commons/0/09/Brandon_Aubrey_9_16_2025.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/20210918_FB_Tennessee_Tech_LS_021-2.jpg/960px-20210918_FB_Tennessee_Tech_LS_021-2.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/4/42/Dre_Greenlaw.jpg/960px-Dre_Greenlaw.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/1/1b/Taylen_Green_%28Image_31_of_64%29_%28cropped%29.jpg/960px-Taylen_Green_%28Image_31_of_64%29_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/b/ba/Graham_Mertz_2023.jpg/960px-Graham_Mertz_2023.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/3/37/Tom_Brady_and_Jarrett_Stidham_%28cropped%29.jpg/960px-Tom_Brady_and_Jarrett_Stidham_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/GermieBernard.jpg/960px-GermieBernard.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/9/9d/2026-0117_Kaelon_Black.jpeg/960px-2026-0117_Kaelon_Black.jpeg
-https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/Drake_London_Falcons_camp_2022.png/960px-Drake_London_Falcons_camp_2022.png
-https://upload.wikimedia.org/wikipedia/commons/thumb/5/51/Philadelphia_Eagles_Visit_ANC_Reed_Blankenship_%28cropped%29.jpg/960px-Philadelphia_Eagles_Visit_ANC_Reed_Blankenship_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/d/d8/Marist_Liufau_-_2025_Commanders_at_Cowboys_%28cropped%29.jpg/960px-Marist_Liufau_-_2025_Commanders_at_Cowboys_%28cropped%29.jpg$im$, E'\n'),
-  array_fill('free'::text, array[70]));
+https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/Davante_Adams_Packers_vs_WFT_OCT2021_%28cropped%29.jpg/960px-Davante_Adams_Packers_vs_WFT_OCT2021_%28cropped%29.jpg$im$, E'\n'),
+  array_fill('free'::text, array[37]));
 
 select public.df20_add_alias('NFL Players',
   array['nfl players', 'current nfl players', 'football players', 'nfl stars']);
 
--- ── NBA Players · 70 items
+-- ── NBA Players · 31 items
 select public.df20_seed_category(
   'NBA Players',
   string_to_array($it$LeBron James
 Jaylen Brown
 Kawhi Leonard
+Stephen Curry
 Giannis Antetokounmpo
 Jalen Brunson
 LaMelo Ball
+Victor Wembanyama
+Walker Kessler
 Kevin Durant
 Bronny James
+Paul George
 Ja Morant
 Klay Thompson
 Karl-Anthony Towns
@@ -9025,68 +8974,29 @@ DeMar DeRozan
 AJ Dybantsa
 James Harden
 Bam Adebayo
+Yaxel Lendeborg
+Zaccharie Risacher
+Shai Gilgeous-Alexander
 Joel Embiid
 Anthony Davis
 Jayson Tatum
 Cooper Flagg
 Andre Drummond
-Damian Lillard
-Grayson Allen
-Max Strus
-Jaxson Hayes
-Donte DiVincenzo
-Aaron Gordon
-Luke Kennard
-Lauri Markkanen
-Koa Peat
-Brayden Burries
-Jaime Jaquez Jr.
-Derrick White
-Jamal Murray
-Josh Giddey
-Jared McCain
-Kris Murray
-Harrison Barnes
-Adou Thiero
-Isaiah Hartenstein
-Jaden McDaniels
-Johni Broome
-Cam Whitmore
-Gary Trent Jr.
-Dalton Knecht
-Gary Payton II
-Luka Garza
-CJ McCollum
-Santi Aldama
-Julian Champagnie
-Alex Caruso
-Bennedict Mathurin
-Adem Bona
-Jalen Williams
-Hannes Steinbach
-Fred VanVleet
-Buddy Hield
-Isaiah Evans
-Julian Reese
-Evan Mobley
-Isaiah Stewart
-Collin Murray-Boyles
-Kyshawn George
-Kevin Porter Jr.
-Darius Garland
-Nic Claxton
-Larry Nance Jr.
-Jalen Johnson
-Dejounte Murray
-Coby White$it$, E'\n'),
+OG Anunoby
+Tyler Herro
+Damian Lillard$it$, E'\n'),
   string_to_array($im$https://upload.wikimedia.org/wikipedia/commons/thumb/7/7a/LeBron_James_%2851959977144%29_%28cropped2%29.jpg/960px-LeBron_James_%2851959977144%29_%28cropped2%29.jpg
 https://upload.wikimedia.org/wikipedia/commons/8/84/Celtics_at_Wizards_2024-12-015_%28cropped%29_%28cropped%29.jpg
 https://upload.wikimedia.org/wikipedia/commons/a/a9/Kawhi_Leonard_%287440607%29_%28cropped%29.jpg
+https://upload.wikimedia.org/wikipedia/commons/5/52/Stephen_Curry%2C_Olympic_Games_2024_%28cropped%29.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/9/9c/Giannis_Antetokounmpo_%2851915153421%29_%28cropped%29.jpg/960px-Giannis_Antetokounmpo_%2851915153421%29_%28cropped%29.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/f/f2/Jalen_Brunson_2023_%28cropped%29.jpg/960px-Jalen_Brunson_2023_%28cropped%29.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/f/f9/LaMelo_Ball_%28cropped%29.jpg/960px-LaMelo_Ball_%28cropped%29.jpg
+https://upload.wikimedia.org/wikipedia/commons/thumb/6/65/Victor_Wembanyama_San_Antonio_Spurs_2024.jpg/960px-Victor_Wembanyama_San_Antonio_Spurs_2024.jpg
+https://upload.wikimedia.org/wikipedia/commons/3/34/Walker_Kessler_%28cropped%29.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Kevin_Durant%2C_Paris_2024_%28cropped%29.jpg/960px-Kevin_Durant%2C_Paris_2024_%28cropped%29.jpg
 https://upload.wikimedia.org/wikipedia/commons/e/ee/Bronny_James_Jr._%2855095342116%29_%28cropped%29.jpg
+https://upload.wikimedia.org/wikipedia/commons/thumb/7/71/1_paul_george_2026_%28cropped%29.jpg/960px-1_paul_george_2026_%28cropped%29.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/a/a1/Ja_Morant_2021.jpg/960px-Ja_Morant_2021.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/8/81/Klay_Thompson_%28cropped%29.jpg/960px-Klay_Thompson_%28cropped%29.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/5/55/Karl-Anthony_Towns_%2851914283512%29_%28cropped%29_%28cropped%29.jpg/960px-Karl-Anthony_Towns_%2851914283512%29_%28cropped%29_%28cropped%29.jpg
@@ -9095,61 +9005,18 @@ https://upload.wikimedia.org/wikipedia/commons/thumb/6/64/DeMar_DeRozan_2022.jpg
 https://upload.wikimedia.org/wikipedia/commons/d/da/AJ_Dybantsa_2024.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/6/63/Harden_dribbling_midcourt%2C_Cavaliers_vs_Nets_on_January_17%2C_2022_%28cropped%29.jpg/960px-Harden_dribbling_midcourt%2C_Cavaliers_vs_Nets_on_January_17%2C_2022_%28cropped%29.jpg
 https://upload.wikimedia.org/wikipedia/commons/7/7d/Bam_Adebayo_%28cropped%29.jpg
+https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/20260211_Yaxel_Lendeborg_05.jpg/960px-20260211_Yaxel_Lendeborg_05.jpg
+https://upload.wikimedia.org/wikipedia/commons/9/9f/Zaccharie_Risacher_All_Star_Game_%28cropped%29.jpg
+https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/2023-08-09_Deutschland_gegen_Kanada_%28Basketball-L%C3%A4nderspiel%29_by_Sandro_Halank%E2%80%93109.jpg/960px-2023-08-09_Deutschland_gegen_Kanada_%28Basketball-L%C3%A4nderspiel%29_by_Sandro_Halank%E2%80%93109.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/1/13/Joel_Embiid_2019.jpg/960px-Joel_Embiid_2019.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/Anthony_Davis_pre-game_%28cropped%29.jpg/960px-Anthony_Davis_pre-game_%28cropped%29.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/8/84/Celtics_at_Wizards_2024-12-044_%28cropped_2%29.jpg/960px-Celtics_at_Wizards_2024-12-044_%28cropped_2%29.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/1/13/Duke_at_UNC%2C_Mar_2025%2C_Flagg.jpg/960px-Duke_at_UNC%2C_Mar_2025%2C_Flagg.jpg
 https://upload.wikimedia.org/wikipedia/commons/thumb/1/1b/1_andre_drummond_2026.jpg/960px-1_andre_drummond_2026.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/Damian_Lillard_%282021%29_%28cropped%29.jpg/960px-Damian_Lillard_%282021%29_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/e/ee/Grayson_Allen%2C_Wizards_vs._Bucks_on_November_7%2C_2021.jpg/960px-Grayson_Allen%2C_Wizards_vs._Bucks_on_November_7%2C_2021.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Max_Strus_-_53368732580_%28cropped%29.jpg/960px-Max_Strus_-_53368732580_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/4/48/Jaxson_hayes.jpg
-https://upload.wikimedia.org/wikipedia/commons/0/09/Donte_DiVincenzo_%28White_House_visit%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Aaron_Gordon_2019_%28cropped%29.jpg/960px-Aaron_Gordon_2019_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/6/60/Wizards_vs._Clippers_-_51848728899_%28cropped%29.jpg/960px-Wizards_vs._Clippers_-_51848728899_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/Lauri_Markkanen%2C_Cavaliers_vs_Rockets_on_December_15%2C_2021_%28cropped%29.jpg/960px-Lauri_Markkanen%2C_Cavaliers_vs_Rockets_on_December_15%2C_2021_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/b/bc/Koa_Peat.jpg/960px-Koa_Peat.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Brayden_Burries.jpg/960px-Brayden_Burries.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/d/df/Jaime_Jaquez_Jr_2021_%28cropped%29.jpg/960px-Jaime_Jaquez_Jr_2021_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/d/db/Boston_Celtics_player_Derrick_White_on_November_21%2C_2024_at_the_White_House_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/b/b6/Jamal_Murray_free_throw_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/0/00/Josh_Giddey_2022.jpg/960px-Josh_Giddey_2022.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/Jared_McCain_Duke_v._Michigan_State.jpg/960px-Jared_McCain_Duke_v._Michigan_State.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/8/84/Kris_Murray_2024_%28cropped%29.jpg/960px-Kris_Murray_2024_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/f/f0/Harrison_Barnes_in_2019_%28cropped%29.jpg/960px-Harrison_Barnes_in_2019_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Adou_Thiero.jpg/960px-Adou_Thiero.jpg
-https://upload.wikimedia.org/wikipedia/commons/8/8e/Isaiah_Hartenstein_OKC_Thunder_2025_NBA_Cup_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/6/66/Jaden_McDaniels_2023_Crawsover_Pro-Am_02.png
-https://upload.wikimedia.org/wikipedia/commons/f/f2/Johni_Broome.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cam_Whitmore_2025_Washington_Wizards_Media_Day.jpg/960px-Cam_Whitmore_2025_Washington_Wizards_Media_Day.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/2/21/WizardsRaptors_114_%2851589980770%29_%28cropped%29.jpg/960px-WizardsRaptors_114_%2851589980770%29_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/1/1e/Dalton_Knecht%2C_2024.jpg/960px-Dalton_Knecht%2C_2024.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/9/91/Gary_Payton_II_Wizards_%28cropped%29.jpg/960px-Gary_Payton_II_Wizards_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Luka_Garza_2020.jpg/960px-Luka_Garza_2020.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/7/73/2025_C.J._McCollum_%28cropped%29.jpg/960px-2025_C.J._McCollum_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/5/5d/Santi_Aldama_%2851812767732%29_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/5/57/Julian_Champagnie_San_Antonio_Spurs_2024.jpg/960px-Julian_Champagnie_San_Antonio_Spurs_2024.jpg
-https://upload.wikimedia.org/wikipedia/commons/3/33/Alex_Caruso_%2852480104636%29_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/f/f1/Bennedict_Mathurin_%28cropped%29.jpg/960px-Bennedict_Mathurin_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/2/20/Adem_Bona_30_T%C3%BCrkiye_20250823_%284%29.jpg/960px-Adem_Bona_30_T%C3%BCrkiye_20250823_%284%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/3/38/Jalen_Williams_OKCThunder_2025_NBA_Cup_%28cropped%29_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/e/ec/Hannes_Steinbach_at_the_2024_U18_EuroBasket.jpg/960px-Hannes_Steinbach_at_the_2024_U18_EuroBasket.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/7/76/Fred_VanVleet_%2851915270294%29_%28cropped%29.jpg/960px-Fred_VanVleet_%2851915270294%29_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/c/ce/Buddy_Playing_for_the_Bahamas_2023_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/c/ce/Isaiah_Evans.jpg/960px-Isaiah_Evans.jpg
-https://upload.wikimedia.org/wikipedia/commons/c/cd/Julian_Reese_%2854424016534%29_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/8/89/Evan_Mobley_%28cropped%29.jpg/960px-Evan_Mobley_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/b/be/Isaiah_Stewart_2022_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/8/83/Collin_Murray-Boyles.jpg/960px-Collin_Murray-Boyles.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/7/71/Kyshawn_George_2025_Washington_Wizards_Media_Day.jpg/960px-Kyshawn_George_2025_Washington_Wizards_Media_Day.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/a/ae/KPJ_%28cropped%29.jpg/960px-KPJ_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/6/61/Darius_Garland_2021-2022.jpg/960px-Darius_Garland_2021-2022.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Nicolas_Claxton_%2849165813553%29_%28cropped%29.jpg/960px-Nicolas_Claxton_%2849165813553%29_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/e/eb/Larry_Nance_%2851658853155%29_%28cropped%29.jpg/960px-Larry_Nance_%2851658853155%29_%28cropped%29.jpg
-https://upload.wikimedia.org/wikipedia/commons/2/23/Jalen-Johnson.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/9/99/Dejounte_Murray_2022.jpg/960px-Dejounte_Murray_2022.jpg
-https://upload.wikimedia.org/wikipedia/commons/thumb/7/77/White_with_the_Chicago_Bulls_on_January_2022.jpg/960px-White_with_the_Chicago_Bulls_on_January_2022.jpg$im$, E'\n'),
-  array_fill('free'::text, array[70]));
+https://upload.wikimedia.org/wikipedia/commons/0/03/OG_Anunoby_%2841708749222%29_%28cropped%29.jpg
+https://upload.wikimedia.org/wikipedia/commons/7/71/Tyler_Herro_%28cropped%29.jpg
+https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/Damian_Lillard_%282021%29_%28cropped%29.jpg/960px-Damian_Lillard_%282021%29_%28cropped%29.jpg$im$, E'\n'),
+  array_fill('free'::text, array[31]));
 
 select public.df20_add_alias('NBA Players',
   array['nba players', 'current nba players', 'basketball players', 'nba stars']);

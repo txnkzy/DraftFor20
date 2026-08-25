@@ -34,6 +34,63 @@ import { rankByPageviews } from "./wikipedia";
 const KEEP = 70;
 
 /**
+ * A star is not just "the most viewed of whoever is on a roster".
+ *
+ * Measured over 60 days of Wikipedia traffic, current NFL players fall into
+ * two clearly separated groups and nothing sits between them:
+ *
+ *     58,695  Bijan Robinson      <- real players stop here
+ *     20,977  Denzel Boston       <- and a flat 19-21k plateau begins
+ *     18,672  Marist Liufau
+ *
+ * That plateau is baseline traffic — a stub article nobody sought out — not
+ * interest, which is why Drake London and Garrett Wilson sit in it alongside
+ * players who have never taken a snap. Taking the top 70 regardless swept the
+ * whole plateau in, and a draft full of practice-squad names is a worse game
+ * than a shorter one.
+ *
+ * Expressed as a SHARE of the tenth-ranked player rather than an absolute
+ * number, because absolute traffic swings with the season and would silently
+ * empty the category in February.
+ */
+const MIN_SHARE_OF_TENTH = 0.4;
+const FLOOR = 24; // a 24-item category still seats a 12-slot roster
+
+/** 60-day view totals, batched. Local to the tool; rankByPageviews hides its scores. */
+async function pageviews(titles: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  for (let i = 0; i < titles.length; i += 50) {
+    const params = new URLSearchParams({
+      action: "query", prop: "pageviews", titles: titles.slice(i, i + 50).join("|"),
+      formatversion: "2", format: "json",
+    });
+    try {
+      // retry: without it this batch silently scored nothing, every player
+      // tied at 0, the cutoff computed as 0 and the whole filter was a no-op
+      let r: Response | null = null;
+      for (let a = 0; a < 4; a++) {
+        r = await fetch(`https://en.wikipedia.org/w/api.php?${params}`, {
+          headers: { "User-Agent": "DraftFor20/1.0 (https://draftfor20.vercel.app; hello@draftfor20.app)" },
+        });
+        if (r.ok) break;
+        if (r.status !== 429 && r.status < 500) break;
+        await new Promise((x) => setTimeout(x, 900 * (a + 1)));
+      }
+      if (!r || !r.ok) continue;
+      const j = (await r.json()) as { query?: { pages?: { title?: string; pageviews?: Record<string, number | null> }[] } };
+      for (const pg of j.query?.pages ?? []) {
+        if (!pg.title) continue;
+        out.set(pg.title, Object.values(pg.pageviews ?? {}).reduce<number>((t, v) => t + (v ?? 0), 0));
+      }
+    } catch {
+      /* a lost batch costs those players their score, not the run */
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return out;
+}
+
+/**
  * Real current players whose fame belongs to somebody else.
  *
  * The resolver gets these RIGHT — Michael Jordan correctly resolves to
@@ -111,7 +168,11 @@ async function currentLeague(cfg: (typeof CURRENT)[number]): Promise<Built | nul
   // third in the NFL — but it is safe as a PRE-FILTER, because the Wikidata
   // sport check below drops him. He costs one slot in the over-fetch and
   // never reaches the category.
-  const OVERFETCH = 220;
+  // 100, not 220. Every shortlisted player costs TWO Wikimedia requests to
+  // verify, and stacking 440 of those on top of the 60 needed to rank 3,000
+  // names got the run rate limited badly enough that pageview scoring returned
+  // nothing at all and the fame filter silently became a no-op.
+  const OVERFETCH = 100;
   const unique = [...new Set(roster.map((p) => p.name))];
   const famous = await rankByPageviews(unique, OVERFETCH);
   const byName = new Map(roster.map((p) => [p.name, p]));
@@ -143,23 +204,44 @@ async function currentLeague(cfg: (typeof CURRENT)[number]): Promise<Built | nul
     } catch {
       /* a transient Wikimedia failure costs one player, not the run */
     }
-    await new Promise((r) => setTimeout(r, 120)); // be a good citizen
+    await new Promise((r) => setTimeout(r, 200)); // be a good citizen
   }
   console.log(`  verified athletes: ${titled.length}`);
 
   const byTitle = new Map<string, { name: string; title: string }>();
   for (const t of titled) if (!byTitle.has(t.title)) byTitle.set(t.title, t);
 
-  // RE-RANK ON THE VERIFIED TITLE. This is the step that matters and the one
-  // that was missing: the shortlist was ranked on bare names, so an obscure
-  // player who shares a name with someone famous inherits their pageviews.
-  // Bill Murray IS a real NFL defensive lineman, and he placed third in the
-  // league on the actor's traffic. Ranking "Bill Murray (American football)"
-  // instead gives his own numbers and he drops out, while Patrick Mahomes —
-  // whose article is simply "Patrick Mahomes" — stays where he belongs.
-  const reranked = await rankByPageviews([...byTitle.keys()], KEEP * 2);
-  const top = reranked.items.map((t) => byTitle.get(t)!).filter(Boolean);
-  console.log(`  re-ranked on title: ${top.slice(0, 8).map((t) => t.name).join(", ")}`);
+  // RE-RANK ON THE VERIFIED TITLE, THEN CUT AT THE CLIFF.
+  //
+  // Ranking on the title is what stops an obscure player inheriting a famous
+  // namesake's traffic: Bill Murray IS a real NFL lineman and placed third in
+  // the league on the actor's numbers. "Bill Murray (American football coach)"
+  // scores his own.
+  const views = await pageviews([...byTitle.keys()]);
+  const scored = [...byTitle.entries()]
+    .map(([title, p]) => ({ ...p, views: views.get(title) ?? 0 }))
+    .sort((a, b) => b.views - a.views);
+
+  const tenth = scored[9]?.views ?? 0;
+  if (tenth === 0) {
+    // scoring failed wholesale; shipping every rostered player is worse than
+    // shipping nothing, so say so rather than silently widening the category
+    throw new Error(`${cfg.category}: pageview scoring returned nothing — re-run`);
+  }
+  const cutoff = Math.round(tenth * MIN_SHARE_OF_TENTH);
+  // Pad the candidate pool before the image filter, not after: some of these
+  // will have no free photograph, and slicing to the floor first is what left
+  // the category three short and skipped entirely.
+  const above = scored.filter((p) => p.views >= cutoff);
+  // Pad ONLY when the fame cut leaves too few to play with. Padding whenever
+  // it fell short of a comfortable 40 put every sub-threshold player straight
+  // back in, which is the practice-squad problem the cut exists to solve.
+  const pool = above.length >= FLOOR ? above : scored.slice(0, FLOOR);
+  const top = pool.slice(0, KEEP);
+  console.log(
+    `  cutoff ${cutoff} (40% of 10th=${tenth}) -> ${above.length} clear it; keeping ${top.length}`,
+  );
+  PROGRESS.push(`  ${cfg.category}: cutoff ${cutoff}, ${above.length} above it`);
 
   const imgs = await resolveImages(top, { freeOnly: true });
   const picked: { name: string; url: string }[] = [];
@@ -207,7 +289,7 @@ it.runIf(!!process.env.SEED)("seed", { timeout: 3_600_000 }, async () => {
   for (const cfg of CURRENT) {
     const b = await currentLeague(cfg);
     await new Promise((r) => setTimeout(r, 5000)); // let Wikimedia breathe
-    if (b && b.picked.length >= 30) built.push(b);
+    if (b && b.picked.length >= 24) built.push(b);
     else log.push(`SKIPPED ${cfg.category}: only ${b?.picked.length ?? 0} usable`);
   }
   for (const [cat, names] of Object.entries(ALLTIME)) {
@@ -251,8 +333,16 @@ select public.df20_add_alias('${b.category}',
 -- new season; the seed upserts by normalised name, so re-running refreshes
 -- both the list and the photographs.
 --
--- Re-runnable.
+-- Re-runnable — and the delete below is why. df20_seed_category UPSERTS by
+-- (library_id, name) and never removes, so re-seeding a shrunken list would
+-- leave every dropped player behind. That is exactly how a category that had
+-- been cut to 37 stars kept all 70 of its practice-squad names.
 -- ═══════════════════════════════════════════════════════════════════════════
+
+delete from public.category_library_items i
+ using public.category_library l
+ where l.id = i.library_id
+   and l.name_norm in (${built.map((b) => `public.df20_norm_category('${b.category}')`).join(",\n                       ")});
 ${blocks}
 -- ── assert they landed, with DISTINCT photographs ─────────────────────────
 do $$

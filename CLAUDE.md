@@ -113,7 +113,7 @@ rule makes them earn.
 
 | Source | Free? | How |
 |---|---|---|
-| `library` | yes | 32 premade categories, 1,829 items |
+| `library` | yes | 32 premade categories, 1,757 items (530 with pictures) |
 | `wikipedia` | **account** | trigram match, then parse a "List of …" article |
 | `manual` | **account** | third party builds the list via a setup link |
 | `saved` | **account** | a deck the host kept from an earlier draft, reshuffled |
@@ -147,6 +147,19 @@ NFL/NBA Players comes through the cascade under `freeOnly` and is stored
 `'free'`, unlike the anime categories which are fair-use `'nonfree'`.
 Regenerate with `SEED=1 npx vitest run lib/espn.seed.test.ts`. **Current
 rosters go stale** — re-run after a trade deadline.
+
+**A roster is not a draft.** NFL rosters run to 3,015 players and most of a
+roster is practice squad. Measured over 60 days of Wikipedia traffic the cast
+splits cleanly in two — Bijan Robinson at 58,695 and then a flat 19-21k
+plateau of stub articles nobody sought out — so the generator cuts at 40% of
+the tenth-ranked player rather than taking a fixed top N. That yields ~37 NFL
+and ~31 NBA, all recognisable. **NFL Players is the preselected default on
+/new**, ahead of the 268 text-only names in Football Draft.
+
+**`df20_seed_category` upserts and never deletes.** Re-seeding a category that
+has SHRUNK leaves every dropped item behind, which is how a list cut to 37
+stars kept all 70 of its practice-squad names. 0049 deletes the category's
+items first; do the same for any regenerated category.
 
 **Never rank players by their bare name.** Wikipedia pageviews for "Bill
 Murray" are the actor's, and there is a real NFL lineman by that name, so he

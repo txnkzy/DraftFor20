@@ -65,7 +65,7 @@ function NewRoom() {
   const router = useRouter();
   const sb = supabaseBrowser();
 
-  const [title, setTitle] = useState("Football Draft");
+  const [title, setTitle] = useState("NFL Players");
   const [hostName, setHostName] = useState("");
   const [rosterSize, setRosterSize] = useState(5);
   const [bankroll, setBankroll] = useState("20");
@@ -146,7 +146,15 @@ function NewRoom() {
       setShelf(list);
       const want = new URLSearchParams(window.location.search).get("mode");
       if (want === "auto" || want === "handoff" || want === "deck") setMode(want);
-      const fb = list.find((c) => c.name === "Football Draft") ?? list[0] ?? null;
+      // NFL Players is the landing default rather than Football Draft: it is
+      // current, curated to players people actually recognise, and every card
+      // carries a photograph. Football Draft is 268 text-only names and stays
+      // on the shelf. The chain still degrades if a category is ever renamed.
+      const fb =
+        list.find((c) => c.name === "NFL Players") ??
+        list.find((c) => c.name === "Football Draft") ??
+        list[0] ??
+        null;
       setPicked(fb);
       if (fb) setTitle(fb.name);
     })();
