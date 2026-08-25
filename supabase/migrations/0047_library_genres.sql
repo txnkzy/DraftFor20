@@ -23,7 +23,11 @@ do $$
 declare
   r record;
   v_map jsonb := jsonb_build_object(
-    'sports', jsonb_build_array('Football Draft','NFL Teams','NBA Teams','MLB Teams'),
+    -- 0049 added four more; same rule as the anime list below, the
+    -- 'ungenred' notice at the end is what catches a miss
+    'sports', jsonb_build_array('Football Draft','NFL Teams','NBA Teams','MLB Teams',
+                                'NFL Players','NBA Players',
+                                'NFL All-Time Greats','NBA All-Time Greats'),
     'movies', jsonb_build_array('Disney Animated Movies','Movie Villains'),
     'tv',     jsonb_build_array('TV Sitcoms'),
     -- 0044 and 0046 each added anime categories; this list has to be extended
