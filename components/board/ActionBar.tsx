@@ -53,6 +53,18 @@ export function ActionBar({
   );
   const atMax = effective >= ceiling;
 
+  /* THE STEPPER CLOSES THE FIELD. It used to nudge `amount` while the typed
+     draft was still on screen, so the number the player was looking at did
+     not move and neither did the Raise button — the counter simply froze
+     until the page was reloaded. It only self-corrected if the field happened
+     to blur first, which is not something a touch keyboard can be relied on
+     to do. Stepping from what is displayed, and dropping the draft, is right
+     whether or not a blur ever arrives. */
+  function step_(direction: 1 | -1) {
+    setTyped(null);
+    setAmount(clamp(effective + direction * step));
+  }
+
   function commit(raw: string) {
     setTyped(null);
     const cents = parseDollarsToCents(raw);
@@ -71,7 +83,7 @@ export function ActionBar({
             className="w-14 shrink-0 text-lg"
             aria-label={`Lower the bid by ${formatCents(step)}`}
             disabled={pending || effective <= floor}
-            onClick={() => setAmount((a) => clamp(a - step))}
+            onClick={() => step_(-1)}
           >
             &minus;
           </Button>
@@ -132,7 +144,7 @@ export function ActionBar({
             className="w-14 shrink-0 text-lg"
             aria-label={`Raise the bid by ${formatCents(step)}`}
             disabled={pending || atMax}
-            onClick={() => setAmount((a) => clamp(a + step))}
+            onClick={() => step_(1)}
           >
             +
           </Button>
