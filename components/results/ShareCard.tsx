@@ -66,12 +66,12 @@ export function ShareCard({
           padding: 72,
         }}
       >
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+        {/* The room code used to sit up here. A finished draft's code opens
+            nothing worth opening, so it was six characters of noise in the
+            corner of a card people post. */}
+        <div style={{ display: "flex", alignItems: "baseline" }}>
           <span className="type-label" style={{ fontSize: 26, color: "#9C978E", letterSpacing: "0.18em" }}>
             THE $20 AUCTION DRAFT
-          </span>
-          <span className="type-num" style={{ fontSize: 26, color: "#9C978E" }}>
-            {model.code}
           </span>
         </div>
 
@@ -232,25 +232,58 @@ export function ShareCard({
             <img
               src={logoUrl}
               alt={`${model.title} host logo`}
-              style={{ height: 44, width: "auto" }}
+              style={{ height: 44, width: "auto", maxWidth: 240, objectFit: "contain", flexShrink: 0 }}
             />
           ) : null}
+          {/* NOTHING HERE WRAPS. This row is laid out at a fixed 1080 and then
+              scaled, so a line that wraps does not reflow into free space — it
+              grows downward into the row above it. Everything is nowrap and
+              unshrinkable, and the site URL yields to the handle rather than
+              both being shown: name, url, handle and the stat together came to
+              more than the 936px between the margins, which is what put the
+              handle underneath the numbers. */}
           {style.watermark ? (
-            <>
-              <span className="type-display" style={{ fontSize: 34 }}>
-                Draft<span style={{ color: brand }}>For20</span>
-              </span>
-              <span className="type-num" style={{ fontSize: 22, color: "#9C978E" }}>
-                {SITE_URL.replace(/^https?:\/\//, "")}
-              </span>
-            </>
+            <span className="type-display" style={{ fontSize: 34, flexShrink: 0, whiteSpace: "nowrap" }}>
+              Draft<span style={{ color: brand }}>For20</span>
+            </span>
           ) : null}
+          {style.watermark && !style.handle ? (
+            <span
+              className="type-num"
+              style={{ fontSize: 22, color: "#9C978E", flexShrink: 0, whiteSpace: "nowrap" }}
+            >
+              {SITE_URL.replace(/^https?:\/\//, "")}
+            </span>
+          ) : null}
+          {/* The one element allowed to give. Handles run to 32 characters,
+              and a logo, the wordmark, a full-length handle and the stat do
+              not fit in 936px together — so this truncates rather than
+              shoving a neighbour onto a second line. */}
           {style.handle ? (
-            <span className="type-display" style={{ fontSize: 30, color: brand }}>
+            <span
+              className="type-display"
+              style={{
+                fontSize: 30,
+                color: brand,
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
               {style.handle}
             </span>
           ) : null}
-          <span className="type-num" style={{ marginLeft: "auto", fontSize: 26, color: "#9C978E" }}>
+          <span
+            className="type-num"
+            style={{
+              marginLeft: "auto",
+              fontSize: 26,
+              color: "#9C978E",
+              flexShrink: 0,
+              whiteSpace: "nowrap",
+            }}
+          >
             {formatCents(model.startingCents)} each &middot; {model.rosterSize} players
           </span>
         </div>
