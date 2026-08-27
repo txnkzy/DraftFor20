@@ -113,7 +113,7 @@ rule makes them earn.
 
 | Source | Free? | How |
 |---|---|---|
-| `library` | yes | 32 premade categories, 1,742 items (615 with pictures) |
+| `library` | yes | 32 premade categories, 1,572 items (1,274 with pictures) |
 | `wikipedia` | **account** | trigram match, then parse a "List of …" article |
 | `manual` | **account** | third party builds the list via a setup link |
 | `saved` | **account** | a deck the host kept from an earlier draft, reshuffled |
@@ -147,6 +147,23 @@ NFL/NBA Players comes through the cascade under `freeOnly` and is stored
 `'free'`, unlike the anime categories which are fair-use `'nonfree'`.
 Regenerate with `SEED=1 npx vitest run lib/espn.seed.test.ts`. **Current
 rosters go stale** — re-run after a trade deadline.
+
+**A WRONG picture passes every assertion you have.** The checks catch
+missing images and duplicated ones; they cannot catch an image that is
+present, unique and of the wrong thing. Caught only by looking: Cyclops as a
+Greek statue, Wolverine as the ANIMAL, Captain America as a science museum in
+Valencia, Nirvana's "Lithium" as the chemical element, The Cranberries'
+"Zombie" as Haitian folklore, Airheads as the 1994 FILM, Haribo as the
+company's head office, Puffins as the BIRD, Kryptonite as the DC mineral, and
+half of Disney as the live-action remakes. **Look at every category in
+/dev/cards before shipping a seed.**
+
+**Two rules that fix most of it.** Resolve the article by SEARCH, not by bare
+name, for anything that is a name rather than a thing — and then require the
+result to match: exact bare title first (Wikipedia gives the original the bare
+name and pushes remakes into a parenthetical), then a name guard, or search
+relevance hands you a sibling. `hits[0]` gave Batman as Barbara Gordon, Hulk
+as Abomination and Deadpool as Yukio.
 
 **`prop=pageviews` answers for only SOME of the titles you ask about** and
 hands back a `continue` token for the rest. Reading the first response looked

@@ -18,7 +18,7 @@ FILES=(
   0041_profiles_grant_hardening 0042_write_paths_and_grant_check
   0043_item_images 0044_onepiece 0045_dev_library_preview 0046_anime_categories
   0047_library_genres 0048_revoke_public_execute 0049_sports_categories
-  0050_brand_categories
+  0050_brand_categories 0051_library_pictures
 )
 
 {
