@@ -300,13 +300,9 @@ function RoomLive({ code }: { code: string }) {
     // audience vote come in.
     return (
       <main className="mx-auto w-full max-w-3xl px-4 py-6">
-        {hotSeatBar ? <div className="mb-4">{hotSeatBar}</div> : null}
-        <ResultsBoard
-          state={state}
-          me={me}
-          onVote={actions.vote}
-          sessionToken={seat?.sessionToken ?? null}
-        />
+        {/* no hot-seat switcher here any more: with the players' vote gone,
+            nothing on this screen belongs to one seat rather than the device */}
+        <ResultsBoard state={state} sessionToken={seat?.sessionToken ?? null} />
         {creator && isHost ? (
           <div className="mt-10 border-t pt-6 rule">
             <ContentPanel

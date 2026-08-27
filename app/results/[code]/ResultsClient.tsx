@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { ResultsBoard } from "@/components/results/ResultsBoard";
 import { Footer, Header, SetupNotice } from "@/components/site/Chrome";
-import { useSeat } from "@/lib/game/session";
 import type { RoomState } from "@/lib/game/types";
 import { supabaseBrowser, supabaseConfigured } from "@/lib/supabase/client";
 
@@ -13,7 +12,6 @@ export function ResultsClient({ code }: { code: string }) {
 }
 
 function Results({ code }: { code: string }) {
-  const seat = useSeat(code);
   const [state, setState] = useState<RoomState | null>(null);
   const [loaded, setLoaded] = useState(false);
 
@@ -50,10 +48,7 @@ function Results({ code }: { code: string }) {
             <p className="type-label mt-2 text-muted">this draft isn&apos;t finished yet</p>
           </>
         ) : (
-          <ResultsBoard
-            state={state}
-            me={state.players.find((p) => p.id === seat?.playerId) ?? null}
-          />
+          <ResultsBoard state={state} />
         )}
       </main>
       <Footer />
