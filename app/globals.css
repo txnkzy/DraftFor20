@@ -220,6 +220,20 @@
 .anim-land      { animation: df20-land 540ms cubic-bezier(.18,.86,.24,1) both; }
 .anim-land-glow { animation: df20-land-glow 1100ms ease-out both; }
 
+/* ── the won card slams into the column that bought it ──────────────────── */
+@keyframes df20-slam-left {
+  0%   { transform: translate(0,0) scale(1); opacity: 1; }
+  70%  { transform: translate(-46%, 14%) scale(0.42); opacity: 0.9; }
+  100% { transform: translate(-52%, 16%) scale(0.3); opacity: 0; }
+}
+@keyframes df20-slam-right {
+  0%   { transform: translate(0,0) scale(1); opacity: 1; }
+  70%  { transform: translate(46%, 14%) scale(0.42); opacity: 0.9; }
+  100% { transform: translate(52%, 16%) scale(0.3); opacity: 0; }
+}
+.anim-slam-left  { animation: df20-slam-left  620ms cubic-bezier(.5,0,.75,0) both; }
+.anim-slam-right { animation: df20-slam-right 620ms cubic-bezier(.5,0,.75,0) both; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;
