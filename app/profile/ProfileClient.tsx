@@ -239,16 +239,20 @@ function Profile() {
         {/* ── plan ───────────────────────────────────────────────────────── */}
         <BillingPanel premium={p} />
 
+        {/* Two account destinations, and sign-out separated from them.
+            "Start a room" used to lead this row, duplicating the gold button
+            in the header that is on screen at the same moment — and putting
+            sign-out in a row of equal-weight peers made leaving look like
+            just another place to go. */}
         <div className="mt-10 flex flex-wrap gap-2">
-          <Link href="/new" className="btn btn-primary h-12 px-5 text-[0.875rem]">
-            Start a room
-          </Link>
           <Link href="/profile/billing" className="btn btn-ghost h-12 px-5 text-[0.875rem]">
             Billing
           </Link>
           <Link href="/host" className="btn btn-ghost h-12 px-5 text-[0.875rem]">
             Host settings
           </Link>
+        </div>
+        <div className="mt-6 border-t pt-5 rule">
           <SignOutButton />
         </div>
       </main>

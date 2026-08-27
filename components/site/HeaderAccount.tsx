@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useHost, signInHref, signUpHref } from "@/lib/auth";
+import { useHost, signInHref } from "@/lib/auth";
 import { usePremium } from "@/lib/premium";
 
 /** Sign in, or who you are signed in as. Hosting a custom category needs one.
@@ -17,21 +17,16 @@ export function HeaderAccount() {
   // gap that pops into a link a beat later reads as a broken header.
   if (!user) {
     const next = pathname || "/new";
+    /* ONE account entry, at every width. A previous pass hid "Sign up" below
+       sm to stop the nav wrapping, which left the same redundancy on desktop
+       and a nav that changed shape as you resized. The login page links
+       straight to signup, and the product's pitch is that you can play with
+       no account at all — so a second auth link in the primary nav was both
+       duplicated and the wrong emphasis. */
     return (
-      <span className="flex items-baseline gap-3">
-        <Link href={signInHref(next)} className="type-label whitespace-nowrap text-muted hover:text-ink">
-          Sign in
-        </Link>
-        {/* Adding Pricing made the nav five items, which wraps at 375px. The
-            login page links straight to signup, so one auth link is enough on
-            the narrowest phones and nothing becomes unreachable. */}
-        <Link
-          href={signUpHref(next)}
-          className="type-label hidden text-muted hover:text-ink sm:inline"
-        >
-          Sign up
-        </Link>
-      </span>
+      <Link href={signInHref(next)} className="type-label whitespace-nowrap text-muted hover:text-ink">
+        Sign in
+      </Link>
     );
   }
 
