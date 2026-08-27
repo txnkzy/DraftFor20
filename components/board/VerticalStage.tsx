@@ -14,40 +14,53 @@ import { rosterOf, type RoomState } from "@/lib/game/types";
 
    THE CENTRE IS THE POINT. This overlay is composited ON TOP of a live camera
    feed of two people talking, so the middle of the frame is not ours to use.
-   Two narrow columns hug the sides, everything else stays out of the way.
+   The card on the block sits in a band across the top, both rosters sit in a
+   band across the bottom, and the faces get everything between.
 
-                28   258            690   920      1080
-                 │    │              │     │        │
-                 │ P1 │  ← 432px →   │ P2  │ TikTok │
-                 │    │  open centre │     │  rail  │
+        110 ┌──────────────────────────────┐
+            │        card on the block     │  ← centred, 680 wide
+        520 ├──────────────────────────────┤
+            │                              │
+            │        O P E N   —  camera   │  ← ~630px of clear frame
+            │                              │
+       1150 ├───────────────┬──────────────┤
+            │    P1 roster  │   P2 roster  │  ← centred pair, 360 + 40 + 360
+       1770 └──────────────────────────────┘
 
-   The right column CANNOT sit flush to the right edge: TikTok draws like,
-   comment, share and sound down that strip, and a roster underneath them is
-   a roster nobody can read. So "right edge" means the right edge of the
-   usable frame, not of the video.                                          */
+   Everything is centred on the true frame centre (540). Staying centred AND
+   clearing TikTok's right-hand action rail means insetting the content band
+   by the rail's width on BOTH sides: symmetry costs 160px on the left that
+   nothing was using, and buys a layout that reads as centred on camera
+   instead of one that reads as shoved left.                                */
 const W = 1080;
 const H = 1920;
-const SAFE_RIGHT = 160;   // TikTok's action rail
+const SAFE_RIGHT = 160;   // TikTok's action rail: like, comment, share, sound
 const SAFE_BOTTOM = 150;  // handle and caption
-const COL = 230;          // column width
-const MARGIN = 28;
+const SAFE_TOP = 110;
 
-const LEFT_X = MARGIN;
-const RIGHT_X = W - SAFE_RIGHT - COL;
-const CENTRE_L = LEFT_X + COL;
-const CENTRE_R = RIGHT_X;
+const BAND_W = W - SAFE_RIGHT * 2;   // 760, centred on 540
+const BAND_X = SAFE_RIGHT;           // 160 → runs 160..920
+
+const COL_GAP = 40;
+const COL = (BAND_W - COL_GAP) / 2;  // 360
+const LEFT_X = BAND_X;
+const RIGHT_X = BAND_X + COL + COL_GAP;
+
+const CARD_W = 680;
+const CARD_X = (W - CARD_W) / 2;     // 200
+const BAND_TOP = 1150;               // where the rosters start
 
 function stageMetrics(rosterSize: number) {
   const t = rosterSize <= 5 ? 0 : rosterSize <= 8 ? 1 : 2;
   const pick = (a: number, b: number, c: number) => [a, b, c][t];
   return {
-    name: pick(30, 27, 24),
-    bank: pick(58, 52, 46),
-    row: pick(21, 19, 17),
-    rowPad: pick(9, 7, 5),
-    card: pick(52, 48, 44),
-    bid: pick(104, 96, 88),
-    clock: pick(76, 70, 64),
+    name: pick(34, 30, 26),
+    bank: pick(66, 58, 50),
+    row: pick(24, 21, 18),
+    rowPad: pick(10, 8, 6),
+    card: pick(62, 56, 50),
+    bid: pick(112, 102, 92),
+    clock: pick(84, 76, 68),
   };
 }
 
@@ -122,6 +135,7 @@ export function VerticalStage({
           transform: `translate(-50%, -50%) scale(${scale})`,
         }}
       >
+        <AuctionCard state={state} view={view} metrics={m} plate={plate} />
         <StageColumn
           state={state} view={view} seat={1}
           name={p1?.display_name ?? "seat 1"}
@@ -134,13 +148,12 @@ export function VerticalStage({
           bankrollCents={p2?.bankroll_cents ?? 0}
           x={RIGHT_X} metrics={m} plate={plate} landedEntryId={landedEntryId}
         />
-        <AuctionCard state={state} view={view} metrics={m} plate={plate} />
       </div>
     </div>
   );
 }
 
-/* ── a player's side ─────────────────────────────────────────────────────── */
+/* ── a player's side of the bottom band ──────────────────────────────────── */
 function StageColumn({
   state, view, seat, name, bankrollCents, x, metrics, plate, landedEntryId,
 }: {
@@ -157,7 +170,18 @@ function StageColumn({
   const player = state.players.find((p) => p.seat === seat);
   const rows = player ? rosterOf(state, player.id) : [];
   const accent = seatAccent(seat);
-  const empty = Math.max(state.room.roster_size - rows.length, 0);
+  const cols = state.room.roster_size > 6 ? 2 : 1;
+
+  /* The bottom band is finite, and at 30 slots a full grid of placeholders
+     overruns it and gets sliced mid-plate. Empty slots are the cheapest
+     thing on screen, so they are what gets cut: every card actually won is
+     rendered, and blanks fill only the room left over. A viewer is counting
+     picks, not placeholders. */
+  const bandH = H - BAND_TOP - SAFE_BOTTOM;
+  const rowH = metrics.row * 1.25 + (metrics.row - 3) * 1.25 + metrics.rowPad * 2 + 5;
+  const headH = metrics.name * 1.2 + metrics.bank + 24 + 34;
+  const capacity = Math.max(cols * Math.floor((bandH - headH - 10) / rowH), rows.length);
+  const empty = Math.max(Math.min(state.room.roster_size - rows.length, capacity - rows.length), 0);
   /* During an offer the OPENER is deciding; during bidding the player ON THE
      CLOCK is. Treating them as interchangeable lit both columns at once. */
   const active =
@@ -169,22 +193,23 @@ function StageColumn({
   const broke = view.players.find((p) => p.seat === seat)?.isBroke ?? false;
 
   /* A 30-slot roster would otherwise run off the bottom of the frame and
-     under TikTok's caption. Clipped to the usable height instead. */
-  const COL_TOP = 150;
+     under TikTok's caption. Clipped to the usable height instead, which eats
+     trailing empty slots before it ever eats a name. */
   return (
     <div
       style={{
         position: "absolute",
         left: x,
-        top: COL_TOP,
+        top: BAND_TOP,
         width: COL,
-        maxHeight: H - COL_TOP - SAFE_BOTTOM,
+        maxHeight: H - BAND_TOP - SAFE_BOTTOM,
         overflow: "hidden",
+        textAlign: "center",
       }}
     >
       {/* name + bankroll, one tight panel */}
       <div style={{ ...plate, padding: "12px 14px" }}>
-        <div className="flex items-baseline" style={{ gap: 8 }}>
+        <div className="flex items-baseline justify-center" style={{ gap: 8 }}>
           <span style={{ width: 12, height: 12, background: accent, flexShrink: 0 }} aria-hidden />
           <span
             className="type-display truncate"
@@ -217,8 +242,18 @@ function StageColumn({
         ) : null}
       </div>
 
-      {/* roster slots, each its own tight row rather than one long block */}
-      <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 5 }}>
+      {/* Roster slots, each its own tight row rather than one long block.
+         The bottom band is 620px tall, so past six slots a single stack runs
+         out of frame — those rosters fold into two sub-columns instead,
+         which buys back twice the depth without touching the open centre. */}
+      <div
+        style={{
+          marginTop: 10,
+          display: "grid",
+          gridTemplateColumns: cols === 2 ? "1fr 1fr" : "1fr",
+          gap: 5,
+        }}
+      >
         {rows.map((r) => (
           <div
             key={r.id}
@@ -258,7 +293,7 @@ function StageColumn({
   );
 }
 
-/* ── what is on the block, floating over the camera ──────────────────────── */
+/* ── what is on the block, across the top ────────────────────────────────── */
 function AuctionCard({
   state, view, metrics, plate,
 }: {
@@ -267,7 +302,6 @@ function AuctionCard({
   metrics: ReturnType<typeof stageMetrics>;
   plate: CSSProperties;
 }) {
-  const width = CENTRE_R - CENTRE_L;
   const resolved = state.lot?.status === "resolved" ? state.lot : null;
   const wonSeat = resolved?.winner_player_id
     ? (state.players.find((p) => p.id === resolved.winner_player_id)?.seat ?? null)
@@ -290,9 +324,9 @@ function AuctionCard({
       className={slam}
       style={{
         position: "absolute",
-        left: CENTRE_L,
-        width,
-        top: 1180,
+        left: CARD_X,
+        width: CARD_W,
+        top: SAFE_TOP,
         ...plate,
         padding: "22px 24px",
         textAlign: "center",
@@ -302,14 +336,14 @@ function AuctionCard({
       {forced ? (
         <div
           className="type-label"
-          style={{ fontSize: 22, color: "var(--color-coral)", marginBottom: 8 }}
+          style={{ fontSize: 24, color: "var(--color-coral)", marginBottom: 8 }}
         >
           {opener!.name} can&apos;t afford this &middot; give or pass
         </div>
       ) : (
         <div
           className="type-label"
-          style={{ fontSize: 20, color: "var(--color-muted)", marginBottom: 6 }}
+          style={{ fontSize: 22, color: "var(--color-muted)", marginBottom: 6 }}
         >
           {view.phase === "complete"
             ? "final board"

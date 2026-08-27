@@ -221,15 +221,19 @@
 .anim-land-glow { animation: df20-land-glow 1100ms ease-out both; }
 
 /* ── the won card slams into the column that bought it ──────────────────── */
+/* The won card travels from the top band down into the winner's roster.
+   These are px, not %, because the stage they animate inside is a fixed
+   1080x1920 coordinate space that is scaled as a whole — so px here is
+   stage px, and the throw lands in the same place at every output size. */
 @keyframes df20-slam-left {
   0%   { transform: translate(0,0) scale(1); opacity: 1; }
-  70%  { transform: translate(-46%, 14%) scale(0.42); opacity: 0.9; }
-  100% { transform: translate(-52%, 16%) scale(0.3); opacity: 0; }
+  70%  { transform: translate(-170px, 800px) scale(0.42); opacity: 0.9; }
+  100% { transform: translate(-200px, 920px) scale(0.3); opacity: 0; }
 }
 @keyframes df20-slam-right {
   0%   { transform: translate(0,0) scale(1); opacity: 1; }
-  70%  { transform: translate(46%, 14%) scale(0.42); opacity: 0.9; }
-  100% { transform: translate(52%, 16%) scale(0.3); opacity: 0; }
+  70%  { transform: translate(170px, 800px) scale(0.42); opacity: 0.9; }
+  100% { transform: translate(200px, 920px) scale(0.3); opacity: 0; }
 }
 .anim-slam-left  { animation: df20-slam-left  620ms cubic-bezier(.5,0,.75,0) both; }
 .anim-slam-right { animation: df20-slam-right 620ms cubic-bezier(.5,0,.75,0) both; }
