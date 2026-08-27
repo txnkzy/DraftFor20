@@ -9532,7 +9532,6 @@ begin
   end loop;
 end $$;
 
-<<<<<<< HEAD
 -- ─────────── 0051_library_pictures.sql ───────────
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -11013,7 +11012,6 @@ begin
   end loop;
 end $$;
 
-=======
 -- ─────────── 0041_allow_broke.sql ───────────
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -11415,7 +11413,6 @@ begin
 end $$;
 grant execute on function public.create_room(text,int,int,int,int,text,boolean,int,text,text,text,uuid,text,boolean) to anon, authenticated;
 
->>>>>>> origin/main
 do $$
 begin
   raise notice '%', public.df20_selfcheck();
