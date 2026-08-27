@@ -21,6 +21,9 @@ export interface Room {
   /** 0 means NO LIMIT: the window stays open until somebody acts. */
   timer_seconds: number;
   content_mode: ContentMode;
+  /** true: a bid may spend the whole bankroll and Force-or-Take covers the
+   *  rest. false: the Reserve Rule keeps back the minimum per open slot. */
+  allow_broke: boolean;
   is_private: boolean;
   brand_accent: string | null;
   brand_logo_url: string | null;

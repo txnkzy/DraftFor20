@@ -74,6 +74,7 @@ function NewRoom() {
   const [customClock, setCustomClock] = useState(false);
   const [contentMode, setContentMode] = useState<"standard" | "creator">("standard");
   const [gives, setGives] = useState(2);
+  const [allowBroke, setAllowBroke] = useState(true);
   const [isPrivate, setIsPrivate] = useState(true);
   const [accent, setAccent] = useState("");
   const [logo, setLogo] = useState("");
@@ -282,6 +283,7 @@ function NewRoom() {
         rosterSize, bankrollCents, minBidCents,
         timerSeconds: timer, hostName: hostName.trim(),
         isPrivate, givesPerPlayer: gives,
+        allowBroke,
         contentMode,
         poolSource:
           mode === "auto" && match ? match.source : mode === "deck" ? "saved" : "library",
@@ -749,6 +751,28 @@ function NewRoom() {
                 Three seconds is the shortest real clock. Use &infin; if you want none at all.
               </p>
             ) : null}
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <span className="type-label text-muted">running out of money</span>
+            <div className="flex gap-1.5">
+              {([[true, "Bid to zero"], [false, "Keep a reserve"]] as const).map(([v, label]) => (
+                <button
+                  key={label}
+                  onClick={() => setAllowBroke(v)}
+                  className={`type-label flex-1 border py-2.5 ${
+                    allowBroke === v ? "border-coral text-coral" : "text-muted rule hover:text-ink"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[0.8125rem] leading-snug text-muted">
+              {allowBroke
+                ? "How the trend is actually played: spend everything on someone you want, and whatever is left of your roster gets filled by give-or-take. Nobody can ever bid more than they hold."
+                : "Every bid keeps back the minimum for your other empty slots, so you can always afford to finish. Safer, and not how it is played on TikTok."}
+            </p>
           </div>
 
           <div className="flex flex-col gap-2">
