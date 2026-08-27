@@ -22,6 +22,27 @@ type Step =
   | { t: "lock"; seat: number; item: string; cents: number; gifted: boolean; hold: number }
   | { t: "give"; seat: number; item: string; hold: number };
 
+/**
+ * Artwork for the landing replay, as LITERALS.
+ *
+ * This used to be null on purpose — "an honest preview of what a category
+ * with no pictures looks like" — which was true when almost nothing on the
+ * shelf had art. It is no longer: 1,274 of 1,572 library items now carry a
+ * real picture, so a generated initials card on the home page undersells the
+ * product to someone who has not seen it work yet. It is the first thing a
+ * visitor looks at and it read as broken.
+ *
+ * Hardcoded rather than resolved, because the landing page must keep fetching
+ * nothing: it is a static marketing page and an image lookup on first paint
+ * would be a network round trip for no gain. Both are Commons-licensed.
+ */
+const DEMO_ART: Record<string, string> = {
+  "Ja'Marr Chase":
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/7/74/Ja%27Marr_Chase.jpg/960px-Ja%27Marr_Chase.jpg",
+  "Zach Ertz":
+    "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e1/Zach_Ertz_-_Raiders_at_Commanders_2025_%28cropped%29.jpg/960px-Zach_Ertz_-_Raiders_at_Commanders_2025_%28cropped%29.jpg",
+};
+
 const SCRIPT: Step[] = [
   // holds are relative dwell, not seconds. Weighted so the moments that carry
   // meaning (a raise landing, a card locking) hold still, while connective
@@ -117,10 +138,7 @@ export function frameAt(progress: number): DemoFrame {
       title: "Football Draft",
       phase: offering ? "offering" : bidding ? "bidding" : "offering",
       itemName: item,
-      // the landing replay ships no artwork and fetches nothing: null draws
-      // the generated card from the name, which is also an honest preview of
-      // what a category with no pictures looks like
-      imageUrl: null,
+      imageUrl: item ? (DEMO_ART[item] ?? null) : null,
       currentBidCents: bid,
       highBidderSeat: bidding ? high : null,
       onClockSeat: bidding ? (high === 1 ? 2 : 1) : null,
