@@ -24,12 +24,20 @@ export function githubConfigured(): boolean {
   return Boolean((process.env.GITHUB_TOKEN ?? "").trim());
 }
 
-function headers() {
+type Headers = Record<string, string>;
+
+function anonHeaders(): Headers {
   return {
-    Authorization: `Bearer ${(process.env.GITHUB_TOKEN ?? "").trim()}`,
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
     "User-Agent": "DraftFor20-changelog",
+  };
+}
+
+function headers(): Headers {
+  return {
+    Authorization: `Bearer ${(process.env.GITHUB_TOKEN ?? "").trim()}`,
+    ...anonHeaders(),
   };
 }
 
@@ -38,10 +46,10 @@ function headers() {
  * two people both reaching for 0041 is the collision that actually happens,
  * and it is a merge conflict in a file that must apply in order.
  */
-async function nextMigrationNumber(): Promise<string | null> {
+async function nextMigrationNumber(h: Headers): Promise<string | null> {
   try {
     const res = await fetch(`${API}/repos/${REPO}/contents/supabase/migrations`, {
-      headers: headers(),
+      headers: h,
       cache: "no-store",
     });
     if (!res.ok) return null;
@@ -57,23 +65,74 @@ async function nextMigrationNumber(): Promise<string | null> {
   }
 }
 
+/**
+ * Why the list came back empty, in words an admin can act on. A token that is
+ * SET but rejected used to look exactly like a token that works and a
+ * repository with no commits: the notice disappeared and nothing replaced it,
+ * so the only visible result of fixing the environment variable was nothing
+ * happening. Reporting the refusal is the difference between "it did not
+ * work" and knowing which of four things to go and change.
+ */
+function refusal(code: number): string {
+  if (code === 401) {
+    return `GitHub rejected the token (401). GITHUB_TOKEN is wrong, revoked, or expired — fine-grained tokens expire on a date you set.`;
+  }
+  if (code === 403 || code === 429) {
+    return `GitHub refused the request (${code}). Either the token cannot read ${REPO}, or the API rate limit is spent.`;
+  }
+  if (code === 404) {
+    return `GitHub has no ${REPO} it will show this token (404). Check GITHUB_REPO, and that the token's resource owner can see the repository.`;
+  }
+  return `GitHub returned ${code}.`;
+}
+
 export async function recentCommits(): Promise<{
   configured: boolean;
   entries: CommitEntry[];
   nextMigration: string | null;
+  problem: string | null;
 }> {
-  if (!githubConfigured()) return { configured: false, entries: [], nextMigration: null };
+  if (!githubConfigured()) {
+    return { configured: false, entries: [], nextMigration: null, problem: null };
+  }
 
   if (cache && Date.now() - cache.at < CACHE_MS) {
-    return { configured: true, entries: cache.entries, nextMigration: cache.nextMigration };
+    return {
+      configured: true,
+      entries: cache.entries,
+      nextMigration: cache.nextMigration,
+      problem: null,
+    };
   }
 
   try {
-    const listRes = await fetch(`${API}/repos/${REPO}/commits?per_page=${COMMITS}`, {
-      headers: headers(),
-      cache: "no-store",
-    });
-    if (!listRes.ok) return { configured: true, entries: [], nextMigration: null };
+    /* This repository is PUBLIC — the same request succeeds with no
+       credentials at all. So a token GitHub refuses should never leave the
+       page emptier than having no token would: try again without it, and if
+       that works, show the commits and say the token is being ignored. */
+    const listUrl = `${API}/repos/${REPO}/commits?per_page=${COMMITS}`;
+    let use: Headers = headers();
+    let listRes = await fetch(listUrl, { headers: use, cache: "no-store" });
+    let tokenRefused: string | null = null;
+
+    if (!listRes.ok && (listRes.status === 401 || listRes.status === 403)) {
+      const rejected = refusal(listRes.status);
+      const anon = await fetch(listUrl, { headers: anonHeaders(), cache: "no-store" });
+      if (anon.ok) {
+        tokenRefused = `${rejected} These commits were read without it, which works because the repository is public — but that path is rate limited and shared, so it will not always be here.`;
+        use = anonHeaders();
+        listRes = anon;
+      }
+    }
+
+    if (!listRes.ok) {
+      return {
+        configured: true,
+        entries: [],
+        nextMigration: null,
+        problem: refusal(listRes.status),
+      };
+    }
 
     const list = (await listRes.json()) as {
       sha: string;
@@ -90,7 +149,7 @@ export async function recentCommits(): Promise<{
       let files: ChangedFile[] = [];
       try {
         const one = await fetch(`${API}/repos/${REPO}/commits/${c.sha}`, {
-          headers: headers(),
+          headers: use,
           cache: "no-store",
         });
         if (one.ok) {
@@ -123,10 +182,16 @@ export async function recentCommits(): Promise<{
       );
     }
 
-    const nextMigration = await nextMigrationNumber();
+    const nextMigration = await nextMigrationNumber(use);
+    // failures are deliberately not cached, so fixing the token shows at once
     cache = { at: Date.now(), entries, nextMigration };
-    return { configured: true, entries, nextMigration };
-  } catch {
-    return { configured: true, entries: [], nextMigration: null };
+    return { configured: true, entries, nextMigration, problem: tokenRefused };
+  } catch (e) {
+    return {
+      configured: true,
+      entries: [],
+      nextMigration: null,
+      problem: `Could not reach the GitHub API: ${e instanceof Error ? e.message : String(e)}`,
+    };
   }
 }

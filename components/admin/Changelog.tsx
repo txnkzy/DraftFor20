@@ -43,6 +43,7 @@ export function Changelog() {
   const [audit, setAudit] = useState<AuditRow[]>([]);
   const [nextMigration, setNextMigration] = useState<string | null>(null);
   const [configured, setConfigured] = useState(true);
+  const [problem, setProblem] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [cat, setCat] = useState<Category | "all">("all");
   const [who, setWho] = useState<string>("all");
@@ -55,13 +56,19 @@ export function Changelog() {
         cache: "no-store",
       })
         .then((r) => r.json())
-        .catch(() => ({ configured: false, entries: [], nextMigration: null })),
+        .catch((e: unknown) => ({
+          configured: true,
+          entries: [],
+          nextMigration: null,
+          problem: `The changelog request itself failed: ${e instanceof Error ? e.message : String(e)}`,
+        })),
       supabaseBrowser().rpc("admin_audit_log", { p_limit: 40 }),
     ]);
     return {
       commits: (commits.entries ?? []) as CommitEntry[],
       configured: commits.configured !== false,
       nextMigration: (commits.nextMigration ?? null) as string | null,
+      problem: (commits.problem ?? null) as string | null,
       audit: ((log.data as AuditRow[] | null) ?? []),
     };
   }, []);
@@ -75,6 +82,7 @@ export function Changelog() {
       setAudit(d.audit);
       setConfigured(d.configured);
       setNextMigration(d.nextMigration);
+      setProblem(d.problem);
       setLoading(false);
     })();
     return () => { off = true; };
@@ -109,9 +117,23 @@ export function Changelog() {
       {!configured ? (
         <p className="mt-4 border border-dashed p-3 text-[0.875rem] leading-relaxed text-muted rule">
           <span className="type-label text-muted">commits unavailable</span> No{" "}
-          <span className="type-num text-ink">GITHUB_TOKEN</span> is set, so only in-app admin
-          actions are listed below. A fine-grained token with Contents: Read on the repo enables
-          the rest.
+          <span className="type-num text-ink">GITHUB_TOKEN</span> reached this deployment, so only
+          in-app admin actions are listed below. Set it in the project&apos;s environment variables
+          for the Production environment — without the{" "}
+          <span className="type-num text-ink">NEXT_PUBLIC_</span> prefix — and redeploy, since a
+          running deployment does not pick up a new variable.
+        </p>
+      ) : null}
+
+      {/* A token that is set and REFUSED used to look exactly like one that
+          works: the notice above disappeared and nothing replaced it. */}
+      {configured && problem ? (
+        <p className="mt-4 border border-gold p-3 text-[0.875rem] leading-relaxed text-ink">
+          <span className="type-label text-gold">
+            {entries.length > 0 ? "token ignored" : "commits unavailable"}
+          </span>{" "}
+          {problem}
+          {entries.length > 0 ? "" : " In-app admin actions are still listed below."}
         </p>
       ) : null}
 

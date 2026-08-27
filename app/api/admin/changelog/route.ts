@@ -26,9 +26,9 @@ export async function GET(req: Request) {
     return NextResponse.json({ message: "DF20_NOT_AUTHORISED" }, { status: 403 });
   }
 
-  const { configured, entries, nextMigration } = await recentCommits();
+  const { configured, entries, nextMigration, problem } = await recentCommits();
   return NextResponse.json(
-    { configured, entries, nextMigration },
+    { configured, entries, nextMigration, problem },
     { headers: { "Cache-Control": "no-store" } },
   );
 }
