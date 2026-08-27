@@ -14,6 +14,7 @@ export function PlayerStrip({
   isHigh = false,
   flashKey = 0,
   givesLeft = null,
+  givesUnlimited = false,
 }: {
   p: BoardPlayerView;
   startingCents: number;
@@ -23,6 +24,8 @@ export function PlayerStrip({
   isHigh?: boolean;
   flashKey?: number;
   givesLeft?: number | null;
+  /** the cap cannot bind, so a running count would be noise */
+  givesUnlimited?: boolean;
 }) {
   const accent = seatAccent(p.seat);
   return (
@@ -44,7 +47,9 @@ export function PlayerStrip({
         {isHigh ? <span className="type-label text-coral">high</span> : null}
         {p.isBroke ? <span className="type-label text-coral">broke</span> : null}
         {givesLeft !== null && givesLeft > 0 ? (
-          <span className="type-label text-teal">{givesLeft} give{givesLeft === 1 ? "" : "s"}</span>
+          <span className="type-label text-teal">
+            {givesUnlimited ? "\u221E gives" : `${givesLeft} give${givesLeft === 1 ? "" : "s"}`}
+          </span>
         ) : null}
 
         <span className="type-num ml-auto shrink-0 text-[0.6875rem] text-muted">

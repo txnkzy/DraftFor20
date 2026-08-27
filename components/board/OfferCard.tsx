@@ -15,6 +15,7 @@ export function OfferCard({
   canTake,
   canGive,
   givesLeft,
+  givesUnlimited = false,
   opponentName,
   pending,
   onDecide,
@@ -23,6 +24,8 @@ export function OfferCard({
   canTake: boolean;
   canGive: boolean;
   givesLeft: number;
+  /** the cap cannot bind, so don't count down toward it */
+  givesUnlimited?: boolean;
   opponentName: string;
   pending: boolean;
   onDecide: (choice: OfferChoice) => void;
@@ -69,8 +72,14 @@ export function OfferCard({
           <>
             Take them and {opponentName} can still bid you up. Give them away and they land on{" "}
             {opponentName}&apos;s roster for nothing, burning a spot they didn&apos;t pick.{" "}
-            <span className="type-num text-teal">{givesLeft}</span> give
-            {givesLeft === 1 ? "" : "s"} left.
+            {givesUnlimited ? (
+              <>Gives are unlimited here.</>
+            ) : (
+              <>
+                <span className="type-num text-teal">{givesLeft}</span> give
+                {givesLeft === 1 ? "" : "s"} left.
+              </>
+            )}
           </>
         ) : givesLeft <= 0 ? (
           <>You&apos;re out of gives. Taking is the only move now.</>

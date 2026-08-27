@@ -56,6 +56,15 @@ const GENRE_LABEL: Record<string, string> = {
   other: "Other",
 };
 
+/**
+ * What "∞" sends. Not a sentinel the server would reject — 30 really is
+ * unlimited: a give burns a slot on the OTHER roster, a roster is at most 30
+ * slots, so a player can never reach a 30th give however the draft goes. This
+ * used to send 99, which create_room refuses outright (gives are 0..30), so
+ * picking unlimited failed to make a room at all.
+ */
+const UNLIMITED_GIVES = 30;
+
 export function NewRoomClient() {
   if (!supabaseConfigured()) return <SetupNotice />;
   return <NewRoom />;
@@ -778,11 +787,11 @@ function NewRoom() {
           <div className="flex flex-col gap-2">
             <span className="type-label text-muted">gives each</span>
             <div className="flex gap-1.5">
-              {[0, 1, 2, 3, 99].map((g) => (
+              {[0, 1, 2, 3, UNLIMITED_GIVES].map((g) => (
                 <button key={g}
                   className={`type-num flex-1 border py-2.5 text-[0.9375rem] ${
                     gives === g ? "border-teal text-teal" : "text-muted rule hover:text-ink"}`}
-                  onClick={() => setGives(g)}>{g === 99 ? "∞" : g}</button>
+                  onClick={() => setGives(g)}>{g === UNLIMITED_GIVES ? "∞" : g}</button>
               ))}
             </div>
             <p className="text-[0.75rem] leading-snug text-muted">

@@ -20,6 +20,7 @@ import { SetupNotice } from "@/components/site/Chrome";
 import { isMoneyWall, readableError } from "@/lib/game/errors";
 import { saveSeat, setActiveSeat, useSeat, useSeats, type Seat } from "@/lib/game/session";
 import { rosterOf, type RoomState } from "@/lib/game/types";
+import { givesAreUnlimited } from "@/lib/game/rules";
 import { useCountdown, useRoom } from "@/lib/game/useRoom";
 import { buildBoardView, seatAccent } from "@/lib/game/view";
 import { formatCents } from "@/lib/money";
@@ -321,6 +322,10 @@ function RoomLive({ code }: { code: string }) {
   const view = buildBoardView(state, cd);
   const p1 = view.players.find((p) => p.seat === 1)!;
   const p2 = view.players.find((p) => p.seat === 2)!;
+  const unlimitedGives = givesAreUnlimited(
+    state.room.gives_per_player,
+    state.room.roster_size,
+  );
   const offering = state.room.phase === "offering";
   const bidding = state.room.phase === "bidding";
   const lock = lockActive ? view.lastLock : null;
@@ -346,6 +351,7 @@ function RoomLive({ code }: { code: string }) {
           canTake={canTake}
           canGive={canGive}
           givesLeft={me.gives_left}
+          givesUnlimited={unlimitedGives}
           opponentName={opponent?.display_name ?? "them"}
           pending={pending}
           onDecide={(choice) => void actions.offerDecide(choice)}
@@ -448,6 +454,7 @@ function RoomLive({ code }: { code: string }) {
           isYou={me?.seat === 1} onClock={view.onClockSeat === 1 || view.openerSeat === 1}
           isHigh={bidding && view.highBidderSeat === 1}
           flashKey={me?.seat === 1 ? wallKey : 0} givesLeft={p1.givesLeft}
+          givesUnlimited={unlimitedGives}
         />
         <div className="h-px w-full border-t rule" />
         <PlayerStrip
@@ -456,6 +463,7 @@ function RoomLive({ code }: { code: string }) {
           isYou={me?.seat === 2} onClock={view.onClockSeat === 2 || view.openerSeat === 2}
           isHigh={bidding && view.highBidderSeat === 2}
           flashKey={me?.seat === 2 ? wallKey : 0} givesLeft={p2.givesLeft}
+          givesUnlimited={unlimitedGives}
         />
 
       </div>
@@ -570,7 +578,14 @@ function Lobby({
           label="clock"
           value={state.room.timer_seconds === 0 ? "no limit" : `${state.room.timer_seconds}s`}
         />
-        <Stat label="gives each" value={String(state.room.gives_per_player)} />
+        <Stat
+          label="gives each"
+          value={
+            givesAreUnlimited(state.room.gives_per_player, state.room.roster_size)
+              ? "\u221E"
+              : String(state.room.gives_per_player)
+          }
+        />
       </dl>
 
       <p className="text-[0.8125rem] leading-relaxed text-muted">
