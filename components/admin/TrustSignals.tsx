@@ -219,11 +219,11 @@ export function TrustSignals() {
                       or bot-check result for it. That is chronology, not a finding.
                     </p>
                   ) : null}
-                  <p className="mt-2 break-all font-mono text-[0.6875rem] text-muted/80">
+                  <p className="mt-2 break-all font-mono text-[0.6875rem] text-muted">
                     {r.user_agent ?? "no user agent recorded"}
                   </p>
                   {r.referrer ? (
-                    <p className="mt-1 break-all font-mono text-[0.6875rem] text-muted/80">
+                    <p className="mt-1 break-all font-mono text-[0.6875rem] text-muted">
                       via {r.referrer}
                     </p>
                   ) : null}

@@ -62,8 +62,11 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.09em;
-    font-size: 0.6875rem;
-    line-height: 1.1;
+    /* 12px, not 11. Uppercase letterspaced type is the hardest thing in this
+       app to read, and this is the connective tissue of every screen. ~9%
+       larger costs almost no density and buys a great deal of legibility. */
+    font-size: 0.75rem;
+    line-height: 1.15;
   }
   /* every number in the app: bankrolls, bids, clocks. tabular so digits do
      not shuffle sideways while a countdown runs. */
@@ -103,6 +106,27 @@
     -webkit-tap-highlight-color: transparent;
   }
   .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  /* Pressed. Hover is a desktop-only affordance and this is a timed game
+     played on phones — without this, a tap gives no feedback at all until
+     the network answers. */
+  .btn:not(:disabled):active { transform: translateY(1px) scale(0.985); }
+  .btn-primary:not(:disabled):active { background: color-mix(in oklab, var(--color-coral) 82%, black); }
+  .btn-ghost:not(:disabled):active,
+  .btn-quiet:not(:disabled):active { background: color-mix(in oklab, var(--color-muted) 20%, transparent); }
+  .btn-calm:not(:disabled):active { background: color-mix(in oklab, var(--color-teal) 22%, transparent); }
+
+  /* Bare text buttons get the same courtesy. */
+  .type-label:is(button):not(:disabled):active,
+  button.type-label:not(:disabled):active { opacity: 0.6; }
+
+  /* TOUCH ONLY: guarantee a 44px target without inflating the desktop
+     layout. `sm` stays visually compact on a mouse and becomes thumb-sized
+     on a finger, so density and reachability stop being in tension. */
+  @media (pointer: coarse) {
+    .btn { min-height: 44px; }
+    button:not(.btn), a:not(.btn) { touch-action: manipulation; }
+  }
 
   /* coral is the ACT button and nothing else */
   .btn-primary { background: var(--color-coral); color: #14161C; border: 1px solid var(--color-coral); }

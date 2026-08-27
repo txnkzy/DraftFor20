@@ -7,6 +7,7 @@
  */
 "use client";
 
+import { notFound } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BidBoard } from "@/components/board/BidBoard";
 import { CardImage } from "@/components/board/CardImage";
@@ -63,6 +64,10 @@ function view(deck: Deck, item: Item): BoardView {
 }
 
 export default function DevCards() {
+  // An internal preview tool, and it was answering 200 in production. The
+  // API behind it was already NODE_ENV-guarded; the page was not.
+  if (process.env.NODE_ENV === "production") notFound();
+
   const [query, setQuery] = useState(PRESETS[0]);
   const [freeOnly, setFreeOnly] = useState(false);
   const [deck, setDeck] = useState<Deck | null>(null);

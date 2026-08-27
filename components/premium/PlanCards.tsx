@@ -160,7 +160,7 @@ export function PlanCards({
                     <span className="type-label flex items-center gap-1.5 text-muted">
                       <Padlock /> checkout not open yet
                     </span>
-                    <span className="text-[0.75rem] leading-snug text-muted/80">
+                    <span className="text-[0.75rem] leading-snug text-muted">
                       Nothing to click here yet — this is switched off, not broken.
                     </span>
                   </div>

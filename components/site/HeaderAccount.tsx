@@ -19,7 +19,7 @@ export function HeaderAccount() {
     const next = pathname || "/new";
     return (
       <span className="flex items-baseline gap-3">
-        <Link href={signInHref(next)} className="type-label text-muted hover:text-ink">
+        <Link href={signInHref(next)} className="type-label whitespace-nowrap text-muted hover:text-ink">
           Sign in
         </Link>
         {/* Adding Pricing made the nav five items, which wraps at 375px. The
@@ -38,7 +38,7 @@ export function HeaderAccount() {
   return (
     <span className="flex items-baseline gap-2">
       <PremiumMark />
-      <Link href="/profile" className="type-label text-teal hover:text-ink" title={user.email ?? ""}>
+      <Link href="/profile" className="type-label whitespace-nowrap text-teal hover:text-ink" title={user.email ?? ""}>
         Profile
       </Link>
     </span>
