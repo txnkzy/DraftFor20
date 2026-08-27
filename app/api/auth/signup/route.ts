@@ -82,8 +82,14 @@ export async function POST(req: Request) {
   // ── the signals, best effort ───────────────────────────────────────────
   // A failure to record evidence must never fail the signup itself.
   if (data.user?.id) {
+    /* Best effort, but not SILENT. Swallowing this whole meant a missing
+       WIKI_WRITE_SECRET, an unapplied 0038 and a foreign-key failure all
+       looked identical from the outside — nothing recorded, no trace — and
+       the console then reported the absence as "created before signals were
+       recorded", which reads as reassurance rather than a broken pipeline.
+       Still never fails the signup. */
     try {
-      await sb.rpc("df20_record_signup", {
+      const { error: sigError } = await sb.rpc("df20_record_signup", {
         p_secret: process.env.WIKI_WRITE_SECRET ?? "",
         p_profile_id: data.user.id,
         p_ip: ip,
@@ -92,8 +98,15 @@ export async function POST(req: Request) {
         p_email: email,
         p_turnstile: outcome,
       });
-    } catch {
-      /* signals are for review, not for correctness */
+      if (sigError) {
+        console.error(
+          "[signup] signals not recorded:",
+          sigError.message,
+          process.env.WIKI_WRITE_SECRET ? "" : "(WIKI_WRITE_SECRET is unset)",
+        );
+      }
+    } catch (e) {
+      console.error("[signup] signals not recorded:", e);
     }
   }
 

@@ -261,10 +261,6 @@ function Admin() {
 
         {error ? <p className="mt-4 text-[0.8125rem] text-coral">{error}</p> : null}
 
-        <TrustSignals />
-
-        <Changelog />
-
         {tab === "users" ? (
           <section className="mt-6">
             <div className="flex flex-col gap-2 sm:flex-row">
@@ -532,6 +528,13 @@ function Admin() {
           </section>
         ) : null}
 
+        {tab === "activity" && !activity ? (
+          <p className="mt-6 text-[0.875rem] text-muted">
+            No activity figures came back. Reload, and if it keeps happening the{" "}
+            <code>admin_activity</code> function is the place to look.
+          </p>
+        ) : null}
+
         {tab === "activity" && activity ? (
           <section className="mt-6 flex flex-col gap-8">
             <dl className="grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-4">
@@ -678,6 +681,14 @@ function Admin() {
             </ul>
           </section>
         ) : null}
+
+        {/* These two are standing panels rather than tabs, so they belong
+            AFTER the tab and its content. Sitting between the nav and the
+            section it controls, they put 1500px between a tab and the thing
+            it changed — which reads exactly like a tab that does nothing. */}
+        <TrustSignals />
+
+        <Changelog />
       </main>
       <Footer />
     </>
