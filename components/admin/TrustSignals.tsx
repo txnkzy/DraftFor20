@@ -45,6 +45,23 @@ const FILTERS = [
   { id: "disposable", label: "Disposable email", hint: "burner address" },
 ];
 
+/**
+ * The oldest account that DOES carry a signup record. Anything created before
+ * it genuinely predates capture; anything created after it and still missing a
+ * record is a hole in the recording, and saying so is the difference between
+ * a fact and a false reassurance.
+ */
+function captureStart(rows: Signal[]): string | null {
+  const withRecord = rows.filter((r) => r.has_signup_record).map((r) => r.created_at);
+  return withRecord.length ? withRecord.reduce((a, b) => (a < b ? a : b)) : null;
+}
+
+function predatesCapture(r: Signal, captureBegan: string | null): boolean {
+  // nothing has ever been captured, so "before capture" is not a claim we can make
+  if (captureBegan === null) return false;
+  return r.created_at < captureBegan;
+}
+
 function duration(s: number | null): string {
   if (s === null) return "never";
   if (s < 60) return `${s}s`;
@@ -117,6 +134,7 @@ export function TrustSignals() {
   }, [read, filter, query]);
 
   const hint = FILTERS.find((f) => f.id === filter)?.hint ?? "";
+  const captureBegan = captureStart(rows);
 
   return (
     <section className="mt-11">
@@ -156,6 +174,23 @@ export function TrustSignals() {
         {hint ? ` · ${hint}` : ""}
       </p>
 
+      {/* An account with no signup_signals row is not automatically an OLD
+          account. If the recorder is misconfigured — a missing secret, an
+          unapplied migration — every new signup lands here too, and calling
+          that "predates capture" turns a broken pipeline into a reassurance.
+          The rows themselves say when capture last worked: the oldest account
+          that DOES have a record. Anything newer than that with no record is
+          a gap worth explaining, not chronology. */}
+      {rows.length > 0 && rows.every((r) => !r.has_signup_record) ? (
+        <p className="mt-3 border border-gold px-3 py-2 text-[0.8125rem] leading-relaxed text-ink">
+          <span className="type-label text-gold">check the recorder</span> Not one account here
+          has signup signals attached, including any created recently. That is a fact about the
+          recording, not about these accounts — look at <code>df20_record_signup</code>, whether
+          migration 0038 is applied, and whether <code>WIKI_WRITE_SECRET</code> is set and matches
+          the database.
+        </p>
+      ) : null}
+
       <ul className="mt-2 flex flex-col">
         {rows.map((r) => {
           const { flags, strong } = notable(r);
@@ -190,8 +225,8 @@ export function TrustSignals() {
                     {(r.ip_shared_with ?? 0) > 0 ? ` · +${r.ip_shared_with} here` : ""}
                   </span>
                 ) : (
-                  <span title="This account was created before signup signals were recorded.">
-                    predates signal capture
+                  <span title="No signup_signals row exists for this account.">
+                    {predatesCapture(r, captureBegan) ? "predates signal capture" : "no signup record"}
                   </span>
                 )}
                 {r.disposable ? <span className="text-gold">disposable</span> : null}
@@ -215,8 +250,9 @@ export function TrustSignals() {
                   )}
                   {!r.has_signup_record ? (
                     <p className="mt-1.5 text-[0.75rem] leading-relaxed text-muted">
-                      Created before signup signals were recorded, so there is no IP, user agent
-                      or bot-check result for it. That is chronology, not a finding.
+                      {predatesCapture(r, captureBegan)
+                        ? `Created before signup signals were recorded, so there is no IP, user agent or bot-check result for it. That is chronology, not a finding.`
+                        : `No signals were stored for this account, though they were being recorded by then. That is a gap in the recording rather than something this account did.`}
                     </p>
                   ) : null}
                   <p className="mt-2 break-all font-mono text-[0.6875rem] text-muted">
