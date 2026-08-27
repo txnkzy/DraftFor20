@@ -12,12 +12,13 @@ import { LeaveRoom } from "@/components/board/LeaveRoom";
 import { ResultsBoard } from "@/components/results/ResultsBoard";
 import { ContentPanel } from "@/components/content/ContentPanel";
 import { CreatorBoard } from "@/components/content/CreatorBoard";
+import { HotSeatBar } from "@/components/content/HotSeatBar";
 import { RecordSurface } from "@/components/content/RecordSurface";
 import { Button } from "@/components/ui/Button";
 import { TextInput } from "@/components/ui/Field";
 import { SetupNotice } from "@/components/site/Chrome";
 import { isMoneyWall, readableError } from "@/lib/game/errors";
-import { saveSeat, useSeat, type Seat } from "@/lib/game/session";
+import { saveSeat, setActiveSeat, useSeat, useSeats, type Seat } from "@/lib/game/session";
 import { rosterOf, type RoomState } from "@/lib/game/types";
 import { useCountdown, useRoom } from "@/lib/game/useRoom";
 import { buildBoardView, seatAccent } from "@/lib/game/view";
@@ -36,6 +37,10 @@ export function RoomClient({ code }: { code: string }) {
 
 function RoomLive({ code }: { code: string }) {
   const seat = useSeat(code);
+  /* Two seats on one device is pass-and-play. Everything below keys off the
+     count, so a normal two-device room takes none of these branches. */
+  const seats = useSeats(code);
+  const hotSeat = seats.length > 1;
   const {
     state, error, rawError, errorNonce, clearError,
     pending, loaded, serverNow, actions, refresh,
@@ -103,6 +108,39 @@ function RoomLive({ code }: { code: string }) {
     };
   }, [recording]);
 
+  /* PASS AND PLAY. Whoever the server says has to act next gets the controls,
+     the instant the clock moves, without anyone tapping anything. Two people
+     filming on one camera should not also be administering a handoff.
+
+     This only ever selects between tokens this device already holds, and only
+     ever a player the server itself has put on the clock — so it changes which
+     of our own tokens is sent, and nothing about what the server will accept. */
+  const controllerId =
+    state?.room.status === "lobby"
+      ? /* the host is the one who can start it, and seating the second player
+           on this device would otherwise leave the Start button belonging to
+           a token we are no longer holding */
+        (state.players.find((p) => p.is_host)?.id ?? null)
+      : state?.room.phase === "offering"
+        ? (state.lot?.opener_player_id ?? null)
+        : state?.room.phase === "bidding"
+          ? (state.lot?.on_the_clock_player_id ?? null)
+          : null;
+  /* Hand over ONCE per turn, not on every render. Re-asserting continuously
+     would silently undo the switcher below a frame after it was tapped, which
+     is worse than not having it: the button would look live and do nothing.
+     Keyed on the turn, so an override holds for as long as that turn lasts and
+     the next one still hands off on its own. */
+  const handoffKey = `${state?.lot?.id ?? "lobby"}:${state?.lot?.turn_seq ?? 0}:${controllerId ?? ""}`;
+  const handedOff = useRef<string | null>(null);
+  useEffect(() => {
+    if (!hotSeat || !controllerId) return;
+    if (handedOff.current === handoffKey) return;
+    handedOff.current = handoffKey;
+    if (!seats.some((s) => s.playerId === controllerId)) return;
+    setActiveSeat(code, controllerId);
+  }, [hotSeat, controllerId, handoffKey, seats, code]);
+
   const muted = useMuted();
   const audioReady = useAudioReady();
   // cues fire from network events, which are not user gestures, so the
@@ -137,11 +175,33 @@ function RoomLive({ code }: { code: string }) {
 
   const me = state.players.find((p) => p.id === seat?.playerId) ?? null;
 
-  const isHost = Boolean(me?.is_host);
+  /* Host-ness follows the DEVICE, not the seat currently holding the controls.
+     In pass-and-play the controls move to the other player every turn, and
+     tying the content tools to the active seat took record mode and the OBS
+     link off the screen mid-draft — on the one setup where somebody is
+     certainly filming. The host's own token is what those calls are made with,
+     whoever happens to be bidding. */
+  const hostSeat =
+    seats.find((s) => state.players.find((p) => p.id === s.playerId)?.is_host) ?? null;
+  const isHost = Boolean(hostSeat) || Boolean(me?.is_host);
+  const hostToken = hostSeat?.sessionToken ?? (me?.is_host ? (seat?.sessionToken ?? null) : null);
   const creator = state.room.content_mode === "creator";
 
   const opponentName =
     (me ? state.players.find((p) => p.id !== me.id) : null)?.display_name ?? null;
+
+  /* The OFFER of a second seat is a Content Creator thing. The bar itself is
+     shown whenever this device actually holds two, creator room or not — a
+     device that has them and cannot see them is a device stuck on one. */
+  const hotSeatBar = hotSeat ? (
+    <HotSeatBar
+      state={state}
+      seats={seats}
+      activePlayerId={seat?.playerId ?? null}
+      autoSwitching={Boolean(controllerId)}
+      onSwitch={(id) => setActiveSeat(code, id)}
+    />
+  ) : null;
 
   /** one <LeaveRoom>, wired the same way wherever it is rendered */
   const leaveButton = (
@@ -202,7 +262,7 @@ function RoomLive({ code }: { code: string }) {
     return (
       <Lobby state={state} me={me} code={code} onSeated={onSeated}
              start={actions.start} pending={pending} error={error} refresh={refresh}
-             leaveButton={leaveButton}>
+             leaveButton={leaveButton} offerHotSeat={creator} hotSeatBar={hotSeatBar}>
         {/* The old Content tab only existed once a draft had started, which
             is the one moment a streamer does not need it. Waiting for the
             second player is exactly when you set up the scene. */}
@@ -211,7 +271,7 @@ function RoomLive({ code }: { code: string }) {
             <ContentPanel
               code={code}
               state={state}
-              sessionToken={seat?.sessionToken ?? null}
+              sessionToken={hostToken}
               premium={premium}
               onRecordMode={() => setRecording(true)}
             />
@@ -240,6 +300,7 @@ function RoomLive({ code }: { code: string }) {
     // audience vote come in.
     return (
       <main className="mx-auto w-full max-w-3xl px-4 py-6">
+        {hotSeatBar ? <div className="mb-4">{hotSeatBar}</div> : null}
         <ResultsBoard
           state={state}
           me={me}
@@ -251,7 +312,7 @@ function RoomLive({ code }: { code: string }) {
             <ContentPanel
               code={code}
               state={state}
-              sessionToken={seat?.sessionToken ?? null}
+              sessionToken={hostToken}
               premium={premium}
               onRecordMode={() => setRecording(true)}
             />
@@ -347,7 +408,7 @@ function RoomLive({ code }: { code: string }) {
         view={view}
         landedEntryId={landed}
         code={code}
-        sessionToken={seat?.sessionToken ?? null}
+        sessionToken={hostToken}
         isHost={isHost}
         premium={premium}
         onRecordMode={() => setRecording(true)}
@@ -359,6 +420,7 @@ function RoomLive({ code }: { code: string }) {
           </p>
         ) : null}
         {actionArea()}
+        {hotSeatBar ? <div className="mt-3">{hotSeatBar}</div> : null}
       </CreatorBoard>
     );
   }
@@ -413,6 +475,7 @@ function RoomLive({ code }: { code: string }) {
           <BidBoard view={view} lock={lock} raiseKey={raiseKey}>
             {actionArea()}
           </BidBoard>
+          {hotSeatBar}
           <LotHistory events={state.events} players={state.players} lotId={state.lot?.id ?? null} />
         </section>
 
@@ -439,6 +502,7 @@ function RoomLive({ code }: { code: string }) {
 
 function Lobby({
   state, me, code, onSeated, start, pending, error, refresh, children, leaveButton,
+  offerHotSeat = false, hotSeatBar,
 }: {
   state: RoomState;
   me: { id: string; is_host: boolean } | null;
@@ -450,6 +514,9 @@ function Lobby({
   refresh: () => void;
   children?: React.ReactNode;
   leaveButton?: React.ReactNode;
+  /** Content Creator rooms let the second player sit down on this computer */
+  offerHotSeat?: boolean;
+  hotSeatBar?: React.ReactNode;
 }) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -467,6 +534,7 @@ function Lobby({
     if (e) { setJoinError(readableError(e.message)); return; }
     const d = data as { room_id: string; code: string; player_id: string; session_token: string; seat: number };
     onSeated({ roomId: d.room_id, code: d.code, playerId: d.player_id, sessionToken: d.session_token, seat: d.seat });
+    setName("");
     refresh();
   }
 
@@ -514,14 +582,30 @@ function Lobby({
         the other can bid it up, or hands them over for free and burns a spot on the other roster.
       </p>
 
-      {!me && !full ? (
+      {/* The same form, for two different people. A spectator uses it to take
+          the free seat on their own device. In a Content Creator room the host
+          uses it to seat the person sitting next to them, on this one — the
+          call is identical either way, and the only difference is that this
+          device then keeps both tokens. */}
+      {!full && (!me || offerHotSeat) ? (
         <div className="flex flex-col gap-2">
-          <TextInput value={name} maxLength={24} placeholder="Your name"
+          {me ? (
+            <p className="type-label text-muted">second player, same computer</p>
+          ) : null}
+          <TextInput value={name} maxLength={24}
+            placeholder={me ? "Their name" : "Your name"}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") void join(); }} />
           <Button variant="primary" size="lg" disabled={busy || !name.trim()} onClick={() => void join()}>
-            Take the second seat
+            {me ? "Sit them down here" : "Take the second seat"}
           </Button>
+          {me ? (
+            <p className="text-[0.8125rem] leading-relaxed text-muted">
+              For playing on one screen. The controls hand over to whoever is up,
+              on their own, every time the clock moves. If they have their own
+              device, send them the code instead.
+            </p>
+          ) : null}
           {joinError ? <p className="text-[0.8125rem] text-coral">{joinError}</p> : null}
         </div>
       ) : null}
@@ -529,6 +613,8 @@ function Lobby({
       {!me && full ? (
         <p className="type-label text-center text-muted">both seats taken &middot; you&apos;re watching</p>
       ) : null}
+
+      {hotSeatBar}
 
       {me?.is_host ? (
         <div className="flex flex-col gap-2">
