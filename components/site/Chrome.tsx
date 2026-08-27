@@ -10,21 +10,25 @@ export function Header({ thin = false }: { thin?: boolean }) {
           thin ? "py-2.5" : "py-4"
         }`}
       >
-        <Link href="/" className="type-display text-[0.9375rem] tracking-tight">
+        <Link href="/" className="type-display shrink-0 text-[0.9375rem] tracking-tight">
           Draft<span className="text-gold">For20</span>
         </Link>
-        <nav className="flex items-center gap-3 sm:gap-4">
-          <Link href="/join" className="type-label text-muted hover:text-ink">
+        {/* Wraps between items, never inside one. At 12px labels and six
+            destinations this row no longer fits 390px, and a nav that breaks
+            "START A ROOM" across three lines is worse than one that takes two
+            tidy rows. */}
+        <nav className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5 sm:gap-x-4">
+          <Link href="/join" className="type-label whitespace-nowrap text-muted hover:text-ink">
             Join
           </Link>
-          <Link href="/20-dollar-draft" className="type-label text-muted hover:text-ink">
+          <Link href="/20-dollar-draft" className="type-label whitespace-nowrap text-muted hover:text-ink">
             $20 Draft
           </Link>
-          <Link href="/pricing" className="type-label text-muted hover:text-ink">
+          <Link href="/pricing" className="type-label whitespace-nowrap text-muted hover:text-ink">
             Pricing
           </Link>
           <HeaderAccount />
-          <Link href="/new" className="type-label text-gold hover:text-ink">
+          <Link href="/new" className="type-label whitespace-nowrap text-gold hover:text-ink">
             Start a room
           </Link>
         </nav>
@@ -53,7 +57,7 @@ export function Footer() {
         >
           Support
         </a>
-        <span className="ml-auto text-[0.75rem] text-muted/70">
+        <span className="ml-auto text-[0.75rem] text-muted">
           Play money. No wagering, no payouts.
         </span>
       </div>

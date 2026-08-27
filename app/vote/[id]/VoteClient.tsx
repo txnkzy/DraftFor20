@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { Footer } from "@/components/site/Chrome";
+import { Footer, Header } from "@/components/site/Chrome";
 import { formatCents } from "@/lib/money";
 import { seatAccent } from "@/lib/game/view";
 
@@ -139,15 +139,20 @@ export function VoteClient({ roomRef }: { roomRef: string }) {
 
   if (!s) {
     return (
-      <main className="grid min-h-dvh place-items-center px-4">
-        <p className="type-label text-muted">loading the board</p>
-      </main>
+      <>
+        <Header thin />
+        <main className="grid min-h-[60dvh] place-items-center px-4">
+          <p className="type-label text-muted">loading the board</p>
+        </main>
+      </>
     );
   }
 
   if (s.status !== "open" || !s.players || s.players.length < 2) {
     return (
-      <main className="mx-auto grid min-h-dvh w-full max-w-md place-items-center px-4 text-center">
+      <>
+        <Header thin />
+        <main className="mx-auto grid min-h-[60dvh] w-full max-w-md place-items-center px-4 text-center">
         <div>
           <h1 className="type-display text-[1.75rem]">
             {s.status === "not_finished"
@@ -163,7 +168,9 @@ export function VoteClient({ roomRef }: { roomRef: string }) {
             Start a free room
           </Link>
         </div>
-      </main>
+        </main>
+        <Footer />
+      </>
     );
   }
 
@@ -171,6 +178,7 @@ export function VoteClient({ roomRef }: { roomRef: string }) {
 
   return (
     <>
+      <Header thin />
       <main className="mx-auto w-full max-w-3xl px-4 py-8">
         <header className="flex flex-col gap-1">
           <span className="type-label text-muted">the internet decides &middot; {s.code ?? ""}</span>

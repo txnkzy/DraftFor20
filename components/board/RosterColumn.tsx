@@ -79,10 +79,10 @@ export function RosterColumn({
             className="col-span-full grid items-baseline border-b py-2 rule"
             style={{ gridTemplateColumns: "subgrid" }}
           >
-            <span className="type-num pr-2.5 text-[0.6875rem] text-muted/60">
+            <span className="type-num pr-2.5 text-[0.6875rem] text-muted">
               {rows.length + i + 1}
             </span>
-            <span className="text-[0.8125rem] text-muted/50">&mdash;</span>
+            <span className="text-[0.8125rem] text-muted">&mdash;</span>
             <span />
           </li>
         ))}

@@ -132,10 +132,10 @@ export function UpgradeCard({
         </p>
         <p className="type-label mt-3 text-muted">
           {cfg.plans.premium.price}
-          <span className="text-muted/70">{cfg.plans.premium.period}</span>
+          <span className="text-muted">{cfg.plans.premium.period}</span>
           {" · "}
           {cfg.plans.pass.price}
-          <span className="text-muted/70"> {cfg.plans.pass.period}</span>
+          <span className="text-muted"> {cfg.plans.pass.period}</span>
         </p>
       </div>
     );
