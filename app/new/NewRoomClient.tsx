@@ -56,6 +56,15 @@ const GENRE_LABEL: Record<string, string> = {
   other: "Other",
 };
 
+/**
+ * What "∞" sends. Not a sentinel the server would reject — 30 really is
+ * unlimited: a give burns a slot on the OTHER roster, a roster is at most 30
+ * slots, so a player can never reach a 30th give however the draft goes. This
+ * used to send 99, which create_room refuses outright (gives are 0..30), so
+ * picking unlimited failed to make a room at all.
+ */
+const UNLIMITED_GIVES = 30;
+
 export function NewRoomClient() {
   if (!supabaseConfigured()) return <SetupNotice />;
   return <NewRoom />;
@@ -74,6 +83,7 @@ function NewRoom() {
   const [customClock, setCustomClock] = useState(false);
   const [contentMode, setContentMode] = useState<"standard" | "creator">("standard");
   const [gives, setGives] = useState(2);
+  const [allowBroke, setAllowBroke] = useState(true);
   const [isPrivate, setIsPrivate] = useState(true);
   const [accent, setAccent] = useState("");
   const [logo, setLogo] = useState("");
@@ -282,6 +292,7 @@ function NewRoom() {
         rosterSize, bankrollCents, minBidCents,
         timerSeconds: timer, hostName: hostName.trim(),
         isPrivate, givesPerPlayer: gives,
+        allowBroke,
         contentMode,
         poolSource:
           mode === "auto" && match ? match.source : mode === "deck" ? "saved" : "library",
@@ -752,13 +763,35 @@ function NewRoom() {
           </div>
 
           <div className="flex flex-col gap-2">
+            <span className="type-label text-muted">running out of money</span>
+            <div className="flex gap-1.5">
+              {([[true, "Bid to zero"], [false, "Keep a reserve"]] as const).map(([v, label]) => (
+                <button
+                  key={label}
+                  onClick={() => setAllowBroke(v)}
+                  className={`type-label flex-1 border py-2.5 ${
+                    allowBroke === v ? "border-coral text-coral" : "text-muted rule hover:text-ink"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[0.8125rem] leading-snug text-muted">
+              {allowBroke
+                ? "How the trend is actually played: spend everything on someone you want, and whatever is left of your roster gets filled by give-or-take. Nobody can ever bid more than they hold."
+                : "Every bid keeps back the minimum for your other empty slots, so you can always afford to finish. Safer, and not how it is played on TikTok."}
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2">
             <span className="type-label text-muted">gives each</span>
             <div className="flex gap-1.5">
-              {[0, 1, 2, 3, 99].map((g) => (
+              {[0, 1, 2, 3, UNLIMITED_GIVES].map((g) => (
                 <button key={g}
                   className={`type-num flex-1 border py-2.5 text-[0.9375rem] ${
                     gives === g ? "border-teal text-teal" : "text-muted rule hover:text-ink"}`}
-                  onClick={() => setGives(g)}>{g === 99 ? "∞" : g}</button>
+                  onClick={() => setGives(g)}>{g === UNLIMITED_GIVES ? "∞" : g}</button>
               ))}
             </div>
             <p className="text-[0.75rem] leading-snug text-muted">

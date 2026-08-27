@@ -34,21 +34,39 @@ export default function PrivacyPage() {
           <strong className="text-ink">A session token.</strong> When you take a seat, the server
           issues a random identifier and your browser keeps it in <code>localStorage</code> under a
           key starting <code>df20:seat:</code>. It is how the server knows a bid came from you
-          without making you sign up. It works only in the one room it was issued for. It is not a
-          cookie and it is never sent to anyone but the game database. Clearing your browser
-          storage gives up your seat.
+          without making you sign up. It works only in the one room it was issued for, and it is
+          never sent to anyone but the game database. Clearing your browser storage gives up your
+          seat.
+        </p>
+        <p>
+          If two of you play on one computer, that browser holds a token for <em>both</em> seats
+          and hands the controls to whoever is up. Both tokens sit under the same key. Anyone using
+          that browser can act as either player, which is the point of the mode, so only use it
+          with someone sitting next to you.
         </p>
       </Clause>
 
       <Clause heading="What you give us only if you choose to host with an account">
         <p>
-          <strong className="text-ink">An email address.</strong> Hosting an account is optional
-          and only exists so saved category templates and card branding survive between sessions.
-          Sign-in is a magic link, so there is no password to store. The address is used to send
-          that link and nothing else. There is no marketing list.
+          <strong className="text-ink">An email address.</strong> An account is optional and exists
+          so that saved category templates, card branding and anything you have paid for survive
+          between sessions. Sign-in is a magic link, so there is no password to store. The address
+          is used to send that link and receipts for anything you buy. There is no marketing list.
+        </p>
+        <p>
+          <strong className="text-ink">What the account holds.</strong> A handle if you set one, a
+          counter of drafts hosted and played and the badges derived from it, your export-card
+          settings (watermark, accent, logo, social handle), and — if you have bought premium —
+          whether it is active, when it expires, and the customer and subscription identifiers
+          Stripe issued. We never see or store a card number.
         </p>
         <p>
           If you host without signing in, which is the default, we never learn your email.
+        </p>
+        <p>
+          A small number of accounts are marked as administrators. They can see the list of
+          accounts and premium status in order to run the service, and can grant premium by hand.
+          They cannot read the contents of a room that has not been shared with them.
         </p>
       </Clause>
 
@@ -60,10 +78,32 @@ export default function PrivacyPage() {
           anything with data brokers.
         </p>
         <p>
-          Fonts are served from our own domain rather than a font CDN, so simply loading a page
-          does not tell any third party that you visited. One exception: generating the downloadable
+          <strong className="text-ink">We also record IP addresses ourselves, briefly.</strong>{" "}
+          Actions that can be abused — asking for a sign-in link, creating an account, voting on a
+          draft — are rate limited by counting requests against the requesting IP address in our
+          own database. Those rows are deleted after one day by a scheduled job. They are used to
+          stop flooding and for nothing else.
+        </p>
+        <p>
+          <strong className="text-ink">One cookie, and only if you vote.</strong> Voting on a draft
+          you are watching sets <code>df20_av</code>, a cookie holding a random identifier so the
+          same browser cannot vote twice in the same room. It is set by the server, unreadable by
+          scripts, lasts a year and is tied to nothing else about you. There are no analytics or
+          advertising cookies anywhere on the site.
+        </p>
+        <p>
+          Fonts are served from our own domain rather than a font CDN. Generating the downloadable
           results-card image fetches a font file from Google Fonts on the <em>server</em>, not from
-          your browser, so your IP is not exposed by it.
+          your browser, so your address is not exposed by it.
+        </p>
+        <p>
+          <strong className="text-ink">Two places your browser does contact someone else.</strong>{" "}
+          Picture cards on some categories are loaded straight from Wikimedia Commons, so your
+          browser asks Wikimedia for that image and Wikimedia can see your IP address, as it can
+          for anyone loading an image from it. And the sign-up page runs a Cloudflare Turnstile
+          check to keep automated sign-ups out, which means Cloudflare sees that request. Neither
+          is used to profile you, and neither is present on a room you are simply playing in
+          without images.
         </p>
       </Clause>
 
@@ -111,6 +151,37 @@ export default function PrivacyPage() {
         </p>
       </Clause>
 
+      <Clause heading="Voting on somebody else's draft">
+        <p>
+          A finished draft can be shared with a link that lets whoever opens it say which roster
+          they think won. No account is needed and none is offered. All that is stored is which
+          player you picked, the room it was for, the time, and the random identifier from the{" "}
+          <code>df20_av</code> cookie described above, which exists only to stop the same browser
+          voting twice. Your IP address is counted against a rate limit, as described above, and is
+          not stored alongside your vote.
+        </p>
+        <p>
+          Votes are counted and shown as a running tally to the players and to other voters. They
+          are never shown individually and there is nothing in one that identifies you. They are
+          deleted with the room.
+        </p>
+      </Clause>
+
+      <Clause heading="Paying for premium">
+        <p>
+          Payments are taken by <strong className="text-ink">Stripe</strong>. Card details are
+          entered on Stripe&apos;s own checkout page and never touch our servers — we cannot see a
+          card number, and we do not store one. What comes back to us is the customer and
+          subscription identifiers, whether the payment succeeded, and how long your access should
+          last.
+        </p>
+        <p>
+          Stripe is an independent controller for the payment itself and keeps its own records for
+          as long as financial law requires it to, which is longer than our retention schedule and
+          is not ours to shorten. Their privacy policy governs that part.
+        </p>
+      </Clause>
+
       <Clause heading="Processors we use">
         <p>
           <strong className="text-ink">Supabase</strong> hosts the Postgres database, the realtime
@@ -119,6 +190,14 @@ export default function PrivacyPage() {
         <p>
           <strong className="text-ink">Vercel</strong> hosts and serves the application and keeps
           short-lived request logs.
+        </p>
+        <p>
+          <strong className="text-ink">Stripe</strong> takes payments and holds the billing
+          relationship, as described above.
+        </p>
+        <p>
+          <strong className="text-ink">Cloudflare</strong> sits in front of the domain and runs the
+          anti-automation check on the sign-up page.
         </p>
         <p>
           Both act as processors on our instructions. Neither is permitted to use your data for
@@ -134,9 +213,14 @@ export default function PrivacyPage() {
           results card stop working permanently.
         </p>
         <p>
-          Host accounts, saved templates and branding persist until you ask us to delete the
-          account. Provider log retention is governed by the providers above and is measured in
-          days, not years.
+          Accounts, saved templates, handles and branding persist until you ask us to delete the
+          account. Rate-limit counters are deleted after a day. Provider log retention is governed
+          by the providers above and is measured in days, not years.
+        </p>
+        <p>
+          Deleting your account removes your side of the billing record, but not Stripe&apos;s.
+          They are required to keep transaction records regardless of what we do, and we cannot
+          delete them on your behalf.
         </p>
       </Clause>
 

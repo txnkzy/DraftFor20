@@ -62,8 +62,11 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.09em;
-    font-size: 0.6875rem;
-    line-height: 1.1;
+    /* 12px, not 11. Uppercase letterspaced type is the hardest thing in this
+       app to read, and this is the connective tissue of every screen. ~9%
+       larger costs almost no density and buys a great deal of legibility. */
+    font-size: 0.75rem;
+    line-height: 1.15;
   }
   /* every number in the app: bankrolls, bids, clocks. tabular so digits do
      not shuffle sideways while a countdown runs. */
@@ -103,6 +106,27 @@
     -webkit-tap-highlight-color: transparent;
   }
   .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  /* Pressed. Hover is a desktop-only affordance and this is a timed game
+     played on phones — without this, a tap gives no feedback at all until
+     the network answers. */
+  .btn:not(:disabled):active { transform: translateY(1px) scale(0.985); }
+  .btn-primary:not(:disabled):active { background: color-mix(in oklab, var(--color-coral) 82%, black); }
+  .btn-ghost:not(:disabled):active,
+  .btn-quiet:not(:disabled):active { background: color-mix(in oklab, var(--color-muted) 20%, transparent); }
+  .btn-calm:not(:disabled):active { background: color-mix(in oklab, var(--color-teal) 22%, transparent); }
+
+  /* Bare text buttons get the same courtesy. */
+  .type-label:is(button):not(:disabled):active,
+  button.type-label:not(:disabled):active { opacity: 0.6; }
+
+  /* TOUCH ONLY: guarantee a 44px target without inflating the desktop
+     layout. `sm` stays visually compact on a mouse and becomes thumb-sized
+     on a finger, so density and reachability stop being in tension. */
+  @media (pointer: coarse) {
+    .btn { min-height: 44px; }
+    button:not(.btn), a:not(.btn) { touch-action: manipulation; }
+  }
 
   /* coral is the ACT button and nothing else */
   .btn-primary { background: var(--color-coral); color: #14161C; border: 1px solid var(--color-coral); }
@@ -195,6 +219,24 @@
 }
 .anim-land      { animation: df20-land 540ms cubic-bezier(.18,.86,.24,1) both; }
 .anim-land-glow { animation: df20-land-glow 1100ms ease-out both; }
+
+/* ── the won card slams into the column that bought it ──────────────────── */
+/* The won card travels from the top band down into the winner's roster.
+   These are px, not %, because the stage they animate inside is a fixed
+   1080x1920 coordinate space that is scaled as a whole — so px here is
+   stage px, and the throw lands in the same place at every output size. */
+@keyframes df20-slam-left {
+  0%   { transform: translate(0,0) scale(1); opacity: 1; }
+  70%  { transform: translate(-170px, 800px) scale(0.42); opacity: 0.9; }
+  100% { transform: translate(-200px, 920px) scale(0.3); opacity: 0; }
+}
+@keyframes df20-slam-right {
+  0%   { transform: translate(0,0) scale(1); opacity: 1; }
+  70%  { transform: translate(170px, 800px) scale(0.42); opacity: 0.9; }
+  100% { transform: translate(200px, 920px) scale(0.3); opacity: 0; }
+}
+.anim-slam-left  { animation: df20-slam-left  620ms cubic-bezier(.5,0,.75,0) both; }
+.anim-slam-right { animation: df20-slam-right 620ms cubic-bezier(.5,0,.75,0) both; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

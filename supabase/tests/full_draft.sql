@@ -19,7 +19,10 @@ begin
   raise notice 'PASS  money function unchanged';
 
   -- ── 2. start: deck is dealt, seat 1 opens ───────────────────────────────
-  v_h := public.create_room('TEST Football Draft', 5, 2000, 100, 120, 'Ari', true, 2);
+  -- allow_broke defaults to TRUE now, and this suite exists to prove the
+  -- Reserve Rule, so it opts in explicitly. v12 covers the new default.
+  v_h := public.create_room('TEST Football Draft', 5, 2000, 100, 120, 'Ari', true, 2,
+                            null, null, 'library', null, 'standard', false);
   v_code := v_h->>'code'; v_ht := (v_h->>'session_token')::uuid;
   v_a := (v_h->>'player_id')::uuid; v_rid := (v_h->>'room_id')::uuid;
   v_rooms := v_rooms || v_rid;

@@ -64,6 +64,8 @@ export async function POST(req: Request) {
     // standard unless the caller asks for creator AND the RPC agrees they
     // have premium; this route does not get a say in that
     p_content_mode: body.contentMode === "creator" ? "creator" : "standard",
+    // defaults to true when absent, matching how the trend is actually played
+    p_allow_broke: body.allowBroke !== false,
   });
 
   if (error) return NextResponse.json({ message: error.message }, { status: 400 });

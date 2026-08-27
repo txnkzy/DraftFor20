@@ -24,7 +24,7 @@
  */
 import { writeFileSync } from "node:fs";
 import { it } from "vitest";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { resolveImages } from "./images/resolve";
 import { rankByPageviews } from "./wikipedia";
 
@@ -168,7 +168,7 @@ const FLOOR = 24;
  * required" the moment vitest COLLECTS this file, which fails the ordinary
  * suite even though the test itself is skipped without LIB=1.
  */
-let _sb: ReturnType<typeof createClient> | null = null;
+let _sb: SupabaseClient | null = null;
 function db() {
   if (!_sb) {
     _sb = createClient(

@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Button } from "@/components/ui/Button";
 import { LibraryOptIn } from "./LibraryOptIn";
 import { ExportPanel } from "./ExportPanel";
 import { VoteLink } from "./VoteLink";
@@ -11,7 +10,7 @@ import { formatCents } from "@/lib/money";
 import { seatAccent } from "@/lib/game/view";
 import { useAudienceTally, type AudienceTally } from "@/lib/game/useAudienceTally";
 import { supabaseBrowser } from "@/lib/supabase/client";
-import type { Player, RoomState } from "@/lib/game/types";
+import type { RoomState } from "@/lib/game/types";
 
 /**
  * The audience tally for somebody sitting in this room. One read on mount to
@@ -55,19 +54,14 @@ function useLiveAudience(
 
 export function ResultsBoard({
   state,
-  me,
-  onVote,
   sessionToken = null,
 }: {
   state: RoomState;
-  me: Player | null;
-  onVote?: (winnerPlayerId: string) => void;
   /** a seated player's token: the audience tally is theirs to watch without
    *  having to vote in their own draft */
   sessionToken?: string | null;
 }) {
   const card = buildCardModel(state);
-  const myVote = state.votes.find((v) => v.voter_player_id === me?.id);
   const audience = useLiveAudience(state.room.id, card.code, sessionToken);
 
   return (
@@ -142,33 +136,11 @@ export function ResultsBoard({
         </p>
       ) : null}
 
-      {me && onVote ? (
-        <div className="flex flex-col gap-2">
-          <span className="type-label text-muted">no algorithm decides this. who won?</span>
-          <div className="flex gap-2">
-            {state.players.map((p) => (
-              <Button
-                key={p.id}
-                variant={myVote?.winner_player_id === p.id ? "primary" : "ghost"}
-                className="flex-1"
-                onClick={() => onVote(p.id)}
-              >
-                {p.display_name}
-              </Button>
-            ))}
-          </div>
-          <p className="type-num text-[0.6875rem] text-muted">
-            {state.votes.length === 0
-              ? "no votes yet"
-              : state.players
-                  .map(
-                    (p) =>
-                      `${p.display_name} ${state.votes.filter((v) => v.winner_player_id === p.id).length}`,
-                  )
-                  .join("  ·  ")}
-          </p>
-        </div>
-      ) : null}
+      {/* The players used to vote on who won, right here. Two people asked
+          which of them won will each say themselves, which is a tie, which is
+          nobody — so the control cost a tap and decided nothing. The audience
+          vote below is the one that means something, because the people
+          casting it have no side. */}
 
       {/* what the internet said, arriving over the same websocket the board
           uses. Only for somebody seated in this room: a spectator who has not

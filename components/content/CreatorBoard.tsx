@@ -13,11 +13,11 @@ import type { PremiumState } from "@/lib/premium";
  * This is not the standard board with different colours. The standard board
  * is a three-column desktop grid — roster, card, roster — with a sticky
  * header carrying both Rails and a running bid history underneath. This is a
- * single 9:16 column: seat 1's roster in the top third, the card and the
- * money and the clock dead centre, seat 2's roster in the bottom third, with
- * the right edge and the bottom strip held empty for the buttons TikTok
- * draws over a recording. Different information, different arrangement,
- * different reading distance.
+ * single 9:16 column: the card and the money and the clock across the top,
+ * both rosters across the bottom, and the middle of the frame left empty
+ * because a camera is pointed through it. The right edge and the bottom strip
+ * are held clear of the buttons TikTok draws over a recording. Different
+ * information, different arrangement, different reading distance.
  *
  * Everything that is not the shot lives in the rail beside it, which is
  * outside the 9:16 frame on any screen wider than it — so what gets recorded

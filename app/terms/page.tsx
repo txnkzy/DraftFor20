@@ -41,8 +41,14 @@ export default function TermsPage() {
       <Clause heading="Seats and accounts">
         <p>
           Playing needs no account. Your seat in a room is held by a token stored in your browser.
-          Anyone using that browser can act as you in that room, so do not hand your device to your
-          opponent mid-draft.
+          Anyone using that browser can act as you in that room, so do not leave a draft open on a
+          device you are handing to someone else.
+        </p>
+        <p>
+          Two people may also share one computer on purpose. In that mode the browser holds both
+          seats and passes the controls to whoever is up, which means whoever is at the keyboard
+          can act as either player. That is the intended behaviour, not a flaw, and it is your
+          choice to use it.
         </p>
         <p>
           A host account is optional and is secured by a link sent to your email. You are
@@ -81,6 +87,47 @@ export default function TermsPage() {
         </p>
       </Clause>
 
+      <Clause heading="Paying for premium">
+        <p>
+          The game is free to play and always will be: creating a room, taking a seat, drafting and
+          the results card cost nothing and need no account. Premium is optional and unlocks
+          presentation features rather than any advantage in a draft. Nothing you buy changes a
+          rule, a bankroll or an outcome, and an unpaid player is never at a disadvantage against a
+          paying one.
+        </p>
+        <p>
+          There are two ways to buy it, and current prices are on the{" "}
+          <Link className="text-gold" href="/pricing">pricing page</Link> rather than here, because
+          they may change. A <strong className="text-ink">day pass</strong> is a one-off payment
+          that adds 24 hours of access and then simply stops. It does not renew and there is
+          nothing to cancel. A <strong className="text-ink">monthly subscription</strong> renews
+          automatically each month, at the price shown when you subscribed, until you cancel it.
+        </p>
+        <p>
+          <strong className="text-ink">Cancelling.</strong> Cancel any time from the billing page
+          in your account, which opens Stripe&apos;s own portal. Cancelling stops the next renewal
+          and leaves your access running to the end of the period you have already paid for. We do
+          not ask why and there is no retention flow to click through.
+        </p>
+        <p>
+          <strong className="text-ink">Refunds.</strong> If premium did not work, or you were
+          charged twice, or you were charged after cancelling, email us and we will refund it. If
+          you simply changed your mind, ask anyway — for sums this small we would rather refund you
+          than argue. Where you have a statutory right to cancel or refund, that right applies on
+          top of this and nothing here reduces it.
+        </p>
+        <p>
+          <strong className="text-ink">Price changes.</strong> A change to the subscription price
+          takes effect only from your next renewal, and you will be told before it is charged. A
+          day pass is priced when you buy it.
+        </p>
+        <p>
+          If a payment fails or is reversed, premium features stop until it is settled. Nothing you
+          created while premium was active is deleted for that reason, though features that require
+          premium stop working.
+        </p>
+      </Clause>
+
       <Clause heading="Rooms are unlisted, not private">
         <p>
           A room code is a key, not a password. Anyone who has it can watch. Do not treat a room as
@@ -90,10 +137,12 @@ export default function TermsPage() {
 
       <Clause heading="Availability and changes">
         <p>
-          The service is provided free and as it stands. We may change, suspend or discontinue any
-          part of it, including deleting rooms under the retention schedule described in the{" "}
+          The service is provided as it stands. We may change, suspend or discontinue any part of
+          it, including deleting rooms under the retention schedule described in the{" "}
           <Link className="text-gold" href="/privacy">Privacy Policy</Link>. There is no uptime
-          commitment. A draft interrupted by an outage may not be recoverable.
+          commitment. A draft interrupted by an outage may not be recoverable. If we withdraw a
+          premium feature you are currently paying a subscription for, you may cancel and we will
+          refund the unused part of the period.
         </p>
       </Clause>
 
@@ -119,9 +168,9 @@ export default function TermsPage() {
           To the fullest extent the law allows, {OPERATOR} is not liable for indirect, incidental,
           special or consequential loss, nor for lost data, lost drafts, or any real-world stake you
           arranged privately with another player. Where liability cannot be excluded, it is limited
-          to the greater of the amount you paid us, which for a free service is nothing, and the
-          minimum the law requires. Nothing here limits liability for death or personal injury
-          caused by negligence, or for fraud.
+          to the greater of the amount you paid us in the twelve months before the claim, which for
+          a free account is nothing, and the minimum the law requires. Nothing here limits
+          liability for death or personal injury caused by negligence, or for fraud.
         </p>
       </Clause>
 

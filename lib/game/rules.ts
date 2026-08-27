@@ -56,3 +56,13 @@ export function isUnderfunded(
 ): boolean {
   return bankrollCents < minBidCents * slotCount;
 }
+
+/**
+ * Whether the gives cap can still bind. A give burns a slot on the OTHER
+ * roster, so a cap at or above the roster size can never be reached however
+ * the draft goes — which is exactly what the setup screen offers as "∞".
+ * Anywhere a count would otherwise be printed, print the infinity instead.
+ */
+export function givesAreUnlimited(givesPerPlayer: number, rosterSize: number): boolean {
+  return givesPerPlayer >= rosterSize;
+}

@@ -27,7 +27,7 @@ export const CONTACT_EMAIL = "support@draftfor20.com";
 export const JURISDICTION = "United States";
 
 /** Last substantive revision of the legal pages. Bump when you edit them. */
-export const LEGAL_UPDATED = "20 August 2026";
+export const LEGAL_UPDATED = "27 August 2026";
 
 /** Rooms and everything in them are deleted after this long. Enforced by
  *  df20_purge_old_rooms() in supabase/migrations/0006_cron.sql. */

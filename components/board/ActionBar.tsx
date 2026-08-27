@@ -3,12 +3,18 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { FlipDigits } from "./FlipDigits";
-import { digitsOf, formatCents } from "@/lib/money";
+import { centsToInput, digitsOf, formatCents, parseDollarsToCents } from "@/lib/money";
 import { minRaise } from "@/lib/game/rules";
 
 /**
  * The thumb zone. Stepper plus two hard-edged buttons, nothing else. Copy has
  * to be readable at a glance while a countdown drains.
+ *
+ * The amount is also TYPEABLE. The stepper is right for nudging a bid by one
+ * increment, and wrong for jumping to $12 with a clock draining — that was
+ * eleven taps. Tapping the number turns it into a field; the stepper and the
+ * Raise button are unchanged, and a bid is still only ever placed by pressing
+ * Raise, so a mistyped number cannot spend anything on its own.
  */
 export function ActionBar({
   currentBidCents,
@@ -32,9 +38,28 @@ export function ActionBar({
 
   // remounted with a fresh key every turn, so plain initial state is the reset
   const [amount, setAmount] = useState(floor);
+  /** null while showing the number, a draft string while it is being typed */
+  const [typed, setTyped] = useState<string | null>(null);
 
   const clamp = (v: number) => Math.max(floor, Math.min(ceiling, v));
-  const atMax = amount >= ceiling;
+
+  /* What Raise would actually place right now. Tapping Raise straight from
+     the field blurs it and commits in the same tick, but the click handler
+     has already closed over the OLD amount — so it would have bid the number
+     that was there before it was typed. Reading the draft here means the
+     button and the field can never disagree. */
+  const effective = clamp(
+    typed !== null ? (parseDollarsToCents(typed) ?? amount) : amount,
+  );
+  const atMax = effective >= ceiling;
+
+  function commit(raw: string) {
+    setTyped(null);
+    const cents = parseDollarsToCents(raw);
+    // Gibberish, or an empty field, leaves the standing amount alone rather
+    // than resetting it to the minimum under somebody's thumb.
+    if (cents !== null) setAmount(clamp(cents));
+  }
 
   return (
     <div className="flex flex-col gap-2.5">
@@ -45,7 +70,7 @@ export function ActionBar({
             size="lg"
             className="w-14 shrink-0 text-lg"
             aria-label={`Lower the bid by ${formatCents(step)}`}
-            disabled={pending || amount <= floor}
+            disabled={pending || effective <= floor}
             onClick={() => setAmount((a) => clamp(a - step))}
           >
             &minus;
@@ -53,10 +78,52 @@ export function ActionBar({
 
           <div className="panel flex flex-1 flex-col items-center justify-center py-1.5">
             <span className="type-label text-muted">your bid</span>
-            <span className="text-[1.75rem] leading-none text-ink">
-              <span className="type-num">$</span>
-              <FlipDigits text={digitsOf(amount)} />
-            </span>
+            {typed === null ? (
+              <button
+                type="button"
+                className="text-[1.75rem] leading-none text-ink"
+                aria-label={`Your bid, ${formatCents(amount)}. Tap to type an amount.`}
+                disabled={pending}
+                onClick={() => setTyped(centsToInput(amount))}
+              >
+                <span className="type-num">$</span>
+                <FlipDigits text={digitsOf(amount)} />
+              </button>
+            ) : (
+              <span className="flex items-baseline text-[1.75rem] leading-none text-ink">
+                <span className="type-num">$</span>
+                <input
+                  autoFocus
+                  inputMode="decimal"
+                  className="type-num bg-transparent text-left text-[1.75rem] leading-none text-ink outline-none"
+                  /* Sized to what has been typed rather than a fixed box, so
+                     the "$" stays welded to its number instead of sitting a
+                     centred field's worth of empty space away. The numeral
+                     face is tabular, so a ch is exactly a digit. */
+                  style={{ width: `${Math.max(typed.length, 1) + 0.5}ch` }}
+                  aria-label={`Your bid in dollars, between ${formatCents(floor)} and ${formatCents(ceiling)}`}
+                  value={typed}
+                  // partial entries like "" and "12." have to survive being
+                  // typed, so only the shape is policed here and the value is
+                  // parsed on the way out
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/[^\d.]/g, "");
+                    if (/^\d*\.?\d{0,2}$/.test(v)) setTyped(v);
+                  }}
+                  onFocus={(e) => e.target.select()}
+                  onBlur={(e) => commit(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      commit(e.currentTarget.value);
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      setTyped(null);
+                    }
+                  }}
+                />
+              </span>
+            )}
           </div>
 
           <Button
@@ -79,9 +146,9 @@ export function ActionBar({
             size="lg"
             className="flex-[2]"
             disabled={pending}
-            onClick={() => onRaise(clamp(amount))}
+            onClick={() => onRaise(effective)}
           >
-            Raise to {formatCents(amount)}
+            Raise to {formatCents(effective)}
           </Button>
         ) : (
           <div className="panel flex flex-[2] items-center justify-center px-3 py-3 text-center">
@@ -95,7 +162,7 @@ export function ActionBar({
 
       <p className="type-num text-center text-[0.6875rem] text-muted">
         {canRaise
-          ? `most you can legally bid: ${formatCents(ceiling)}`
+          ? `${formatCents(floor)} to ${formatCents(ceiling)}`
           : `${formatCents(currentBidCents)} is past your limit of ${formatCents(ceiling)}`}
       </p>
     </div>

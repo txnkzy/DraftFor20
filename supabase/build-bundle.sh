@@ -19,6 +19,12 @@ FILES=(
   0043_item_images 0044_onepiece 0045_dev_library_preview 0046_anime_categories
   0047_library_genres 0048_revoke_public_execute 0049_sports_categories
   0050_brand_categories 0051_library_pictures
+  # NUMBERED 0041 BUT IT RUNS LAST, deliberately. Two files carry that number
+  # — 0041_allow_broke and 0041_profiles_grant_hardening — because two people
+  # numbered from 0040 at the same time. Ordering by the number would apply a
+  # newer game rule before six migrations that postdate it; ordering by INTENT
+  # is what matters, and the bundle is what defines apply order.
+  0041_allow_broke
 )
 
 {

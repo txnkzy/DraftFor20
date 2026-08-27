@@ -1,6 +1,21 @@
+"use client";
+
 import Link from "next/link";
 import { CONTACT_EMAIL } from "@/lib/site";
 import { HeaderAccount } from "./HeaderAccount";
+import { usePremium } from "@/lib/premium";
+
+/** Hidden once you are paying: a subscriber does not need the sales page in
+ *  their primary nav, and billing lives on the profile. */
+function PricingLink() {
+  const premium = usePremium();
+  if (premium.active) return null;
+  return (
+    <Link href="/pricing" className="type-label whitespace-nowrap text-muted hover:text-ink">
+      Pricing
+    </Link>
+  );
+}
 
 export function Header({ thin = false }: { thin?: boolean }) {
   return (
@@ -10,21 +25,21 @@ export function Header({ thin = false }: { thin?: boolean }) {
           thin ? "py-2.5" : "py-4"
         }`}
       >
-        <Link href="/" className="type-display text-[0.9375rem] tracking-tight">
+        <Link href="/" className="type-display shrink-0 text-[0.9375rem] tracking-tight">
           Draft<span className="text-gold">For20</span>
         </Link>
-        <nav className="flex items-center gap-3 sm:gap-4">
-          <Link href="/join" className="type-label text-muted hover:text-ink">
+        {/* Four jobs, four items: join a game, see the price, your account,
+            start a game. /20-dollar-draft is deliberately NOT here — it is a
+            search landing page whose own call to action is "start a room",
+            which is the button immediately beside it. It stays in the footer,
+            so it is still internally linked and still crawlable. */}
+        <nav className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5 sm:gap-x-4">
+          <Link href="/join" className="type-label whitespace-nowrap text-muted hover:text-ink">
             Join
           </Link>
-          <Link href="/20-dollar-draft" className="type-label text-muted hover:text-ink">
-            $20 Draft
-          </Link>
-          <Link href="/pricing" className="type-label text-muted hover:text-ink">
-            Pricing
-          </Link>
+          <PricingLink />
           <HeaderAccount />
-          <Link href="/new" className="type-label text-gold hover:text-ink">
+          <Link href="/new" className="type-label whitespace-nowrap text-gold hover:text-ink">
             Start a room
           </Link>
         </nav>
@@ -53,7 +68,7 @@ export function Footer() {
         >
           Support
         </a>
-        <span className="ml-auto text-[0.75rem] text-muted/70">
+        <span className="ml-auto text-[0.75rem] text-muted">
           Play money. No wagering, no payouts.
         </span>
       </div>
