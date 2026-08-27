@@ -116,13 +116,29 @@ export function PlanCards({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid gap-4 sm:grid-cols-2">
+      {/*
+        SUBGRID, so the two cards line up row for row.
+        Each card is a flex column whose feature list has flex-1, which pins
+        the CTA to whatever height the list happens to end at — and the note
+        BELOW the button is two lines on Premium ("Cancel any time…") and one
+        on the Pass, so the buttons sat 19px apart. Equalising the note with a
+        min-height would be a magic number that breaks the first time the copy
+        or the viewport changes.
+        Subgrid instead: the parent owns the six rows, every card adopts them,
+        and title, price, features, button and note all align. The 1fr row is
+        the feature list, so it still absorbs the slack. Without subgrid
+        support this degrades to six auto rows, which looks the same as today.
+      */}
+      <div className="grid gap-4 sm:grid-cols-2 sm:grid-rows-[auto_auto_auto_1fr_auto_auto]">
         {(["premium", "pass"] as const).map((id) => {
           const c = COPY[id];
           const p = cfg?.plans[id];
           const live = Boolean(cfg?.configured && p?.available);
           return (
-            <section key={id} className="flex flex-col border p-5 rule">
+            <section
+              key={id}
+              className="flex flex-col border p-5 rule sm:row-span-6 sm:grid sm:grid-rows-subgrid"
+            >
               <div className="flex items-baseline gap-2">
                 <h2 className="type-display text-[1.25rem]">{c.title}</h2>
                 {id === "premium" ? (
