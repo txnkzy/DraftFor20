@@ -61,7 +61,13 @@ interface LibraryItem {
 }
 
 interface Activity {
-  rooms: { total: number; today: number; week: number; live: number; complete: number };
+  rooms: {
+    total: number; today: number; week: number; live: number; complete: number;
+    /* the same seven days, narrowed at each step. Older deployments of
+       admin_activity do not return these, hence optional. */
+    week_joined?: number; week_started?: number;
+    week_complete?: number; week_empty?: number;
+  };
   daily: { day: string; rooms: number }[];
   categories: Record<string, number>;
   modes: { standard: number; creator: number };
@@ -538,11 +544,37 @@ function Admin() {
         {tab === "activity" && activity ? (
           <section className="mt-6 flex flex-col gap-8">
             <dl className="grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-4">
-              <Stat label="rooms today" value={activity.rooms.today} />
-              <Stat label="this week" value={activity.rooms.week} />
+              <Stat label="created today" value={activity.rooms.today} />
+              <Stat label="created this week" value={activity.rooms.week} />
               <Stat label="all time" value={activity.rooms.total} />
               <Stat label="live now" value={activity.rooms.live} />
             </dl>
+
+            {/* A room row exists the moment somebody presses Create — before
+                anyone joins and before a card is dealt. Read on its own,
+                "created this week" counts a code nobody used the same as a
+                finished draft. These are the same seven days, narrowed. */}
+            {activity.rooms.week_joined !== undefined ? (
+              <div>
+                <p className="type-label text-muted">of those created this week</p>
+                <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-4">
+                  <Stat label="got a 2nd player" value={activity.rooms.week_joined ?? 0} />
+                  <Stat label="started" value={activity.rooms.week_started ?? 0} />
+                  <Stat label="finished" value={activity.rooms.week_complete ?? 0} />
+                  <Stat label="never filled" value={activity.rooms.week_empty ?? 0} />
+                </dl>
+                <p className="mt-2 text-[0.8125rem] leading-relaxed text-muted">
+                  {activity.rooms.week > 0
+                    ? `${Math.round(((activity.rooms.week_empty ?? 0) / activity.rooms.week) * 100)}% of this week's rooms never found a second player. That is normal — a code gets made and not used — but it is why the created figure is not a count of games played.`
+                    : "No rooms created this week."}
+                </p>
+              </div>
+            ) : (
+              <p className="text-[0.8125rem] leading-relaxed text-muted">
+                The created counts above include rooms nobody ever joined. Apply migration 0052
+                to break them down by how far each one actually got.
+              </p>
+            )}
 
             <div>
               <h2 className="type-display text-[1rem]">Rooms created</h2>
