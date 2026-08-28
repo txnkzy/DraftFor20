@@ -67,6 +67,8 @@ interface Activity {
        admin_activity do not return these, hence optional. */
     week_joined?: number; week_started?: number;
     week_complete?: number; week_empty?: number;
+    /* 0053: finished is the headline, and live means active right now */
+    finished_today?: number; finished_week?: number; live_idle?: number;
   };
   daily: { day: string; rooms: number }[];
   categories: Record<string, number>;
@@ -544,9 +546,12 @@ function Admin() {
         {tab === "activity" && activity ? (
           <section className="mt-6 flex flex-col gap-8">
             <dl className="grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-4">
-              <Stat label="created today" value={activity.rooms.today} />
-              <Stat label="created this week" value={activity.rooms.week} />
-              <Stat label="all time" value={activity.rooms.total} />
+              {/* Finished drafts are the headline. Creating a room is free
+                  and takes one press; finishing one takes two people and
+                  twenty minutes, which is the thing worth counting. */}
+              <Stat label="finished today" value={activity.rooms.finished_today ?? 0} />
+              <Stat label="finished this week" value={activity.rooms.finished_week ?? 0} />
+              <Stat label="finished all time" value={activity.rooms.complete} />
               <Stat label="live now" value={activity.rooms.live} />
             </dl>
 
@@ -554,9 +559,21 @@ function Admin() {
                 anyone joins and before a card is dealt. Read on its own,
                 "created this week" counts a code nobody used the same as a
                 finished draft. These are the same seven days, narrowed. */}
+            {activity.rooms.live_idle !== undefined && activity.rooms.live_idle > 0 ? (
+              <p className="text-[0.8125rem] leading-relaxed text-muted">
+                <span className="type-num text-ink">{activity.rooms.live_idle}</span> more
+                {activity.rooms.live_idle === 1 ? " room is" : " rooms are"} still marked live with
+                nobody in {activity.rooms.live_idle === 1 ? "it" : "them"} — drafts whose players
+                closed the tab. Nothing moves a room out of that state on its own, so they sit
+                there until the 90-day purge. They are not counted above.
+              </p>
+            ) : null}
+
             {activity.rooms.week_joined !== undefined ? (
               <div>
-                <p className="type-label text-muted">of those created this week</p>
+                <p className="type-label text-muted">
+                  of the {activity.rooms.week} created this week
+                </p>
                 <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-4">
                   <Stat label="got a 2nd player" value={activity.rooms.week_joined ?? 0} />
                   <Stat label="started" value={activity.rooms.week_started ?? 0} />
