@@ -356,8 +356,13 @@ function Admin() {
                         <span
                           className="type-label"
                           style={{ color: r.active ? "var(--color-teal)" : "var(--color-muted)" }}
+                          title={
+                            r.active
+                              ? `How this account got premium: ${sourceLabel(r.premium_source)}. Unrelated to admin access.`
+                              : "No premium on this account"
+                          }
                         >
-                          {r.active ? (r.premium_source ?? "active") : "free"}
+                          {r.active ? sourceLabel(r.premium_source) : "free"}
                         </span>
                         {r.active && r.premium_until ? (
                           <span className="type-num block text-[0.6875rem] text-muted">
@@ -378,27 +383,21 @@ function Admin() {
                         {/* PREMIUM AND ADMIN ARE NOT NEIGHBOURS. Three small
                             buttons in a row, one of which hands over the keys
                             to the whole console, is a mis-tap waiting to
-                            happen — and the only thing that told you which one
-                            you had hit was the confirmation naming admin. They
-                            are now separated, individually labelled, and both
-                            grants ask first, saying which one they are. */}
+                            happen. They are separated and individually
+                            labelled, and only the one that cannot be undone by
+                            pressing it again asks first. */}
                         <div className="flex flex-wrap items-center justify-end gap-1.5">
                           <Button
                             variant="ghost"
                             size="sm"
                             disabled={busy === r.id}
                             title={`Give ${r.handle ?? r.email ?? "this account"} premium for ${Math.max(Number(days) || 30, 1)} days`}
-                            onClick={() => {
-                              const d = Math.max(Number(days) || 30, 1);
-                              const ok = window.confirm(
-                                `Give ${r.handle ?? r.email ?? "this account"} ${d} days of PREMIUM?\n\nThis grants paid features only. It does not make them an admin.`,
-                              );
-                              if (ok)
-                                void call(r.id, "admin_set_premium", {
-                                  p_user_id: r.id,
-                                  p_days: d,
-                                });
-                            }}
+                            onClick={() =>
+                              void call(r.id, "admin_set_premium", {
+                                p_user_id: r.id,
+                                p_days: Math.max(Number(days) || 30, 1),
+                              })
+                            }
                           >
                             +{Math.max(Number(days) || 30, 1)}d premium
                           </Button>
@@ -430,7 +429,7 @@ function Admin() {
                               const ok = window.confirm(
                                 r.is_admin
                                   ? `Remove admin access from ${r.handle ?? r.email ?? "this account"}?`
-                                  : `Make ${r.handle ?? r.email ?? "this account"} an ADMIN?\n\nThis is not premium. They will be able to grant premium, moderate the library and manage other admins — including removing yours.`,
+                                  : `Make ${r.handle ?? r.email ?? "this account"} an ADMIN?\n\nThey will be able to grant premium, moderate the library and manage other admins — including removing yours.`,
                               );
                               if (ok) void call(r.id, "admin_set_admin", {
                                 p_user_id: r.id,
@@ -679,7 +678,7 @@ function Admin() {
                 rows={[
                   ["accounts with premium", activity.premium.active],
                   ...Object.entries(activity.premium.by_source).map(
-                    ([k, n]) => [`  ${k}`, n] as [string, number],
+                    ([k, n]) => [`  ${sourceLabel(k)}`, n] as [string, number],
                   ),
                   ["audience votes cast", activity.audience.votes],
                   ["drafts judged", activity.audience.rooms_voted_on],
@@ -791,6 +790,29 @@ function Admin() {
       <Footer />
     </>
   );
+}
+
+/**
+ * premium_source as a person reads it. The stored values are
+ * stripe_subscription / game_night_pass / admin_grant, and printing the last
+ * one raw put the word ADMIN in the premium column of an admin console — so a
+ * comped account looked like an account that had been made an administrator.
+ * These say how the premium was come by, and nothing about access.
+ */
+function sourceLabel(source: string | null): string {
+  switch (source) {
+    case "stripe_subscription":
+      return "subscription";
+    case "game_night_pass":
+      return "day pass";
+    case "admin_grant":
+      return "granted";
+    case null:
+    case undefined:
+      return "active";
+    default:
+      return source.replace(/_/g, " ");
+  }
 }
 
 function Stat({ label, value }: { label: string; value: number }) {
