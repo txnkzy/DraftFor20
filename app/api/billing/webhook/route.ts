@@ -42,6 +42,25 @@ const DEAD = new Set(["canceled", "incomplete_expired", "unpaid"]);
  * Throwing hands it to the catch below, which writes the failure row and
  * answers 500 so Stripe retries and shows the failure in its own dashboard.
  */
+/**
+ * One idempotency key per PURCHASE, not per event.
+ *
+ * A day pass can be announced twice — checkout.session.completed and
+ * payment_intent.succeeded describe the same £1 — and those carry different
+ * event ids, so keying on the event id would grant 24 hours twice. Both paths
+ * key on the payment intent instead, and df20_apply_billing_event's
+ * `on conflict (event_id) do nothing` turns whichever arrives second into a
+ * no-op. Whichever arrives FIRST grants, so the pass works if Stripe is
+ * sending either one.
+ */
+function passKey(paymentIntent: unknown): string | null {
+  const id =
+    typeof paymentIntent === "string"
+      ? paymentIntent
+      : ((paymentIntent as { id?: string } | null)?.id ?? null);
+  return id ? `pass:${id}` : null;
+}
+
 async function must(
   op: Promise<{ ok: boolean; detail?: string }>,
   what: string,
@@ -81,7 +100,7 @@ export async function POST(req: Request) {
           // the Game Night Pass: 24 hours, added to whatever is already there
           await must(
             applyBilling({
-              eventId: event.id,
+              eventId: passKey(s.payment_intent) ?? event.id,
               userId,
               customerId,
               status: "pass",
@@ -106,6 +125,30 @@ export async function POST(req: Request) {
             source: "stripe_subscription",
           }),
           "checkout subscription",
+        );
+        break;
+      }
+
+      /* THE PASS, ANNOUNCED THE OTHER WAY. An endpoint subscribed to
+         payment_intent.succeeded but not checkout.session.completed sent this
+         instead, and it fell to `default: break` — answered 200, granted
+         nothing, wrote nothing. The checkout deliberately puts user_id and
+         plan on the payment intent, so everything needed is already here.
+         Guarded on plan so a subscription's own payment intent, which settles
+         through the invoice events below, cannot grant a pass. */
+      case "payment_intent.succeeded": {
+        const pi = event.data.object as Stripe.PaymentIntent;
+        if (pi.metadata?.plan !== "pass") break;
+        await must(
+          applyBilling({
+            eventId: passKey(pi.id) ?? event.id,
+            userId: pi.metadata?.user_id ?? null,
+            customerId: typeof pi.customer === "string" ? pi.customer : null,
+            status: "pass",
+            source: "game_night_pass",
+            extendHours: 24,
+          }),
+          "day pass (payment_intent)",
         );
         break;
       }
