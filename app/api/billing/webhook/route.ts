@@ -30,6 +30,26 @@ function periodEnd(sub: Stripe.Subscription): Date | null {
 
 const DEAD = new Set(["canceled", "incomplete_expired", "unpaid"]);
 
+/**
+ * A write that failed must not be answered with 200.
+ *
+ * applyBilling and revokeBilling do not throw — they RETURN {ok:false}. Every
+ * call here discarded that, so a refused write fell through to
+ * `{received:true}`: Stripe recorded the delivery as succeeded and never
+ * retried, nothing was written to billing_events, and the customer got
+ * nothing. A payment could be lost permanently with no trace on either side.
+ *
+ * Throwing hands it to the catch below, which writes the failure row and
+ * answers 500 so Stripe retries and shows the failure in its own dashboard.
+ */
+async function must(
+  op: Promise<{ ok: boolean; detail?: string }>,
+  what: string,
+): Promise<void> {
+  const r = await op;
+  if (!r.ok) throw new Error(`${what} failed: ${r.detail ?? "write refused"}`);
+}
+
 export async function POST(req: Request) {
   const status = billingStatus();
   const stripe = getStripe();
@@ -59,28 +79,34 @@ export async function POST(req: Request) {
 
         if (s.mode === "payment") {
           // the Game Night Pass: 24 hours, added to whatever is already there
-          await applyBilling({
-            eventId: event.id,
-            userId,
-            customerId,
-            status: "pass",
-            source: "game_night_pass",
-            extendHours: 24,
-          });
+          await must(
+            applyBilling({
+              eventId: event.id,
+              userId,
+              customerId,
+              status: "pass",
+              source: "game_night_pass",
+              extendHours: 24,
+            }),
+            "day pass",
+          );
           break;
         }
 
         const subId = typeof s.subscription === "string" ? s.subscription : null;
         const sub = subId ? await stripe.subscriptions.retrieve(subId) : null;
-        await applyBilling({
-          eventId: event.id,
-          userId,
-          customerId,
-          subscriptionId: subId,
-          status: sub?.status ?? "active",
-          premiumUntil: sub ? periodEnd(sub) : null,
-          source: "stripe_subscription",
-        });
+        await must(
+          applyBilling({
+            eventId: event.id,
+            userId,
+            customerId,
+            subscriptionId: subId,
+            status: sub?.status ?? "active",
+            premiumUntil: sub ? periodEnd(sub) : null,
+            source: "stripe_subscription",
+          }),
+          "checkout subscription",
+        );
         break;
       }
 
@@ -90,27 +116,30 @@ export async function POST(req: Request) {
         const customerId = typeof sub.customer === "string" ? sub.customer : null;
 
         if (DEAD.has(sub.status) && customerId) {
-          await revokeBilling(event.id, customerId, sub.status);
+          await must(revokeBilling(event.id, customerId, sub.status), "revoke");
           break;
         }
         // past_due keeps the access it has already paid for while Stripe
         // retries; the date on the profile is what decides, not the status
-        await applyBilling({
-          eventId: event.id,
-          userId: sub.metadata?.user_id ?? null,
-          customerId,
-          subscriptionId: sub.id,
-          status: sub.status,
-          premiumUntil: periodEnd(sub),
-          source: "stripe_subscription",
-        });
+        await must(
+          applyBilling({
+            eventId: event.id,
+            userId: sub.metadata?.user_id ?? null,
+            customerId,
+            subscriptionId: sub.id,
+            status: sub.status,
+            premiumUntil: periodEnd(sub),
+            source: "stripe_subscription",
+          }),
+          "subscription update",
+        );
         break;
       }
 
       case "customer.subscription.deleted": {
         const sub = event.data.object as Stripe.Subscription;
         const customerId = typeof sub.customer === "string" ? sub.customer : null;
-        if (customerId) await revokeBilling(event.id, customerId, "canceled");
+        if (customerId) await must(revokeBilling(event.id, customerId, "canceled"), "cancel");
         break;
       }
 
@@ -122,15 +151,18 @@ export async function POST(req: Request) {
         const id = typeof subId === "string" ? subId : subId?.id ?? null;
         if (!id) break;
         const sub = await stripe.subscriptions.retrieve(id);
-        await applyBilling({
-          eventId: event.id,
-          userId: sub.metadata?.user_id ?? null,
-          customerId: typeof sub.customer === "string" ? sub.customer : null,
-          subscriptionId: sub.id,
-          status: sub.status,
-          premiumUntil: periodEnd(sub),
-          source: "stripe_subscription",
-        });
+        await must(
+          applyBilling({
+            eventId: event.id,
+            userId: sub.metadata?.user_id ?? null,
+            customerId: typeof sub.customer === "string" ? sub.customer : null,
+            subscriptionId: sub.id,
+            status: sub.status,
+            premiumUntil: periodEnd(sub),
+            source: "stripe_subscription",
+          }),
+          "invoice paid",
+        );
         break;
       }
 
@@ -139,7 +171,10 @@ export async function POST(req: Request) {
         const customerId = typeof inv.customer === "string" ? inv.customer : null;
         if (customerId) {
           // status only. They keep what they have paid for until it lapses.
-          await applyBilling({ eventId: event.id, customerId, status: "past_due" });
+          await must(
+            applyBilling({ eventId: event.id, customerId, status: "past_due" }),
+            "payment failed",
+          );
         }
         break;
       }

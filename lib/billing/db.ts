@@ -47,6 +47,22 @@ export async function applyBilling(w: BillingWrite): Promise<{ ok: boolean; deta
     p_extend_hours: w.extendHours ?? null,
   });
   if (error) return { ok: false, detail: error.message };
+
+  /* A REFUSAL IS NOT A SUCCESS. df20_apply_billing_event answers
+     {"matched": false} when it cannot tie the event to a profile, and it
+     returns that BEFORE writing the billing_events row — so a correctly
+     signed event for an account it cannot find granted nothing and left no
+     trace anywhere. Reported as a failure so the caller logs it and Stripe
+     is told to try again. A duplicate is genuinely fine: that is the
+     idempotency key doing its job on a retry. */
+  const r = (data ?? {}) as { matched?: boolean; duplicate?: boolean };
+  if (r.matched === false) {
+    return {
+      ok: false,
+      detail:
+        "no profile matched this event — checked the checkout's user_id and the stored stripe_customer_id",
+    };
+  }
   return { ok: true, detail: JSON.stringify(data) };
 }
 
