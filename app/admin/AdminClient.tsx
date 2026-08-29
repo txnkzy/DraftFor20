@@ -375,30 +375,46 @@ function Admin() {
                         {r.last_seat ? new Date(r.last_seat).toLocaleDateString() : "—"}
                       </td>
                       <td className="border-b py-2.5 text-right rule">
-                        <div className="flex justify-end gap-1.5">
+                        {/* PREMIUM AND ADMIN ARE NOT NEIGHBOURS. Three small
+                            buttons in a row, one of which hands over the keys
+                            to the whole console, is a mis-tap waiting to
+                            happen — and the only thing that told you which one
+                            you had hit was the confirmation naming admin. They
+                            are now separated, individually labelled, and both
+                            grants ask first, saying which one they are. */}
+                        <div className="flex flex-wrap items-center justify-end gap-1.5">
                           <Button
                             variant="ghost"
                             size="sm"
                             disabled={busy === r.id}
-                            onClick={() =>
-                              void call(r.id, "admin_set_premium", {
-                                p_user_id: r.id,
-                                p_days: Math.max(Number(days) || 30, 1),
-                              })
-                            }
+                            title={`Give ${r.handle ?? r.email ?? "this account"} premium for ${Math.max(Number(days) || 30, 1)} days`}
+                            onClick={() => {
+                              const d = Math.max(Number(days) || 30, 1);
+                              const ok = window.confirm(
+                                `Give ${r.handle ?? r.email ?? "this account"} ${d} days of PREMIUM?\n\nThis grants paid features only. It does not make them an admin.`,
+                              );
+                              if (ok)
+                                void call(r.id, "admin_set_premium", {
+                                  p_user_id: r.id,
+                                  p_days: d,
+                                });
+                            }}
                           >
-                            +{Math.max(Number(days) || 30, 1)}d
+                            +{Math.max(Number(days) || 30, 1)}d premium
                           </Button>
                           <Button
                             variant="quiet"
                             size="sm"
                             disabled={busy === r.id || !r.active}
+                            title="End this account's premium access now"
                             onClick={() =>
                               void call(r.id, "admin_set_premium", { p_user_id: r.id, p_days: 0 })
                             }
                           >
-                            Revoke
+                            End premium
                           </Button>
+
+                          <span aria-hidden className="mx-1 h-5 w-px bg-[color:var(--color-muted)] opacity-30" />
                           {/* the server refuses this for non-admins and for
                               the last remaining admin; the button only asks */}
                           <Button
@@ -414,7 +430,7 @@ function Admin() {
                               const ok = window.confirm(
                                 r.is_admin
                                   ? `Remove admin access from ${r.handle ?? r.email ?? "this account"}?`
-                                  : `Give ${r.handle ?? r.email ?? "this account"} full admin access?\n\nThey will be able to grant premium, moderate the library and manage other admins — including removing yours.`,
+                                  : `Make ${r.handle ?? r.email ?? "this account"} an ADMIN?\n\nThis is not premium. They will be able to grant premium, moderate the library and manage other admins — including removing yours.`,
                               );
                               if (ok) void call(r.id, "admin_set_admin", {
                                 p_user_id: r.id,
@@ -704,8 +720,41 @@ function Admin() {
             </p>
             <ul className="mt-4 flex flex-col">
               {events.length === 0 ? (
-                <li className="type-label border-b py-3 text-muted rule">
-                  nothing yet &middot; Stripe has never called
+                <li className="border-b py-3 rule">
+                  <span className="type-label text-coral">
+                    nothing yet &middot; Stripe has never called
+                  </span>
+                  {/* An empty list here is not "no sales". A signed event that
+                      never arrives leaves NO trace at all — no failure row
+                      either, because the handler writes those only after the
+                      signature checks out. So an empty list and a customer who
+                      paid and got nothing look identical, and this is where
+                      that has to be said out loud. */}
+                  <p className="mt-2 text-[0.8125rem] leading-relaxed text-muted">
+                    If anyone has paid, this list should not be empty. An event that never
+                    reaches the app leaves nothing behind — not even a failure — so an empty
+                    list is what a broken endpoint looks like. Three things to check, in order:
+                  </p>
+                  <ol className="mt-2 flex list-inside list-decimal flex-col gap-1.5 text-[0.8125rem] leading-relaxed text-muted">
+                    <li>
+                      The endpoint URL in Stripe must be{" "}
+                      <span className="type-num text-ink">
+                        https://www.draftfor20.com/api/billing/webhook
+                      </span>{" "}
+                      — the <span className="type-num text-ink">www</span> form. The bare domain
+                      answers 308 to it, and Stripe does not follow redirects: it records a
+                      failed delivery and nothing ever arrives.
+                    </li>
+                    <li>
+                      <span className="type-num text-ink">STRIPE_WEBHOOK_SECRET</span> must match
+                      that endpoint&apos;s signing secret. A mismatch is rejected before
+                      anything is written here.
+                    </li>
+                    <li>
+                      Stripe&apos;s own Webhooks page lists every attempt and its response. That
+                      is the authority on whether an event was ever sent.
+                    </li>
+                  </ol>
                 </li>
               ) : null}
               {events.map((e) => (
