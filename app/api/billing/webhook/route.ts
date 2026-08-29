@@ -229,9 +229,16 @@ export async function POST(req: Request) {
     // 500 makes Stripe retry, which is what we want for a transient failure.
     // It is also written down, so the console can show it without anyone
     // having to go digging through log drains.
+    const why = (err as Error)?.message ?? String(err);
     console.error("stripe webhook handling failed", event.type, err);
-    await logBillingFailure(event.id, event.type, (err as Error)?.message ?? String(err));
-    return new Response("Handler failed.", { status: 500 });
+    await logBillingFailure(event.id, event.type, why);
+    /* The reason goes in the RESPONSE BODY too. Stripe shows it against the
+       delivery attempt, which is where somebody who just pressed Resend is
+       already looking — and it is the one place that still says something
+       when the failure is the billing secret itself, since logBillingFailure
+       needs that same secret to write its row. Only Stripe can reach this
+       endpoint with a valid signature, so this is not a public surface. */
+    return new Response(`Handler failed: ${why}`, { status: 500 });
   }
 
   return NextResponse.json({ received: true });
