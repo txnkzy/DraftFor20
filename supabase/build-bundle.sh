@@ -25,6 +25,11 @@ FILES=(
   # newer game rule before six migrations that postdate it; ordering by INTENT
   # is what matters, and the bundle is what defines apply order.
   0041_allow_broke
+  # AFTER 0041_allow_broke, because it restates offer_decide and expire_turn
+  # from that file. Swap the two and the Force branch is silently overwritten
+  # by the version that has no Force in it — which is the exact shape of the
+  # df20_clean_logo_url outage, a caller applied before its dependency.
+  0055_force_or_take
 )
 
 {

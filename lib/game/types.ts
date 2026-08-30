@@ -4,9 +4,11 @@ export type ContentMode = "standard" | "creator";
 export type RoomStatus = "lobby" | "live" | "complete" | "abandoned";
 export type LotStatus = "offered" | "bidding" | "resolved" | "void";
 export type BidAction =
-  | "reveal" | "offer_take" | "offer_give" | "discard"
+  | "reveal" | "offer_take" | "offer_give" | "offer_forced" | "discard"
   | "raise" | "pass" | "timeout_pass" | "won" | "blocked_win";
-export type OfferChoice = "take" | "give" | "discard";
+/** "force": the opener cannot cover the minimum, so the card lands on their
+ *  own roster at $0. It is only ever legal when "take" is not. */
+export type OfferChoice = "take" | "give" | "force" | "discard";
 
 export interface Room {
   id: string;
@@ -65,6 +67,9 @@ export interface RosterEntry {
   item_name: string;
   price_cents: number;
   gifted: boolean;
+  /** landed here because the owner could not cover the minimum bid. Always
+   *  gifted too, since it was free — but nobody gave it. */
+  forced: boolean;
   won_at: string;
 }
 
@@ -90,6 +95,7 @@ export interface Lot {
   winner_player_id: string | null;
   final_price_cents: number | null;
   gifted: boolean;
+  forced: boolean;
   created_at: string;
   resolved_at: string | null;
 }

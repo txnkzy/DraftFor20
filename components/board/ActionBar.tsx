@@ -31,10 +31,23 @@ export function ActionBar({
   onRaise: (cents: number) => void;
   onPass: () => void;
 }) {
-  const floor = minRaise(currentBidCents, minBidCents);
   const ceiling = maxLegalBidCents;
-  const canRaise = ceiling >= floor;
-  const step = minBidCents > 0 ? minBidCents : 25;
+  /* The TRUE legal floor, which is a single CENT over the standing bid in a
+     room with no minimum. That is what the server will accept; it is not what
+     anybody wants to press a plus button forty times to reach. */
+  const legalFloor = minRaise(currentBidCents, minBidCents);
+  const canRaise = ceiling >= legalFloor;
+
+  /* BIDS MOVE IN WHOLE DOLLARS. The stepper used to nudge by the room's
+     minimum bid, falling back to 25c when that was zero — so a $0-minimum
+     room raised in quarters and the board filled up with $3.28 and $7.53.
+     A dollar is the unit people say out loud, so a dollar is the unit.
+
+     The floor is still clamped to the ceiling: a player with 40c of headroom
+     over the standing bid can legally win with it, and rounding the floor up
+     to a whole dollar would hide the only bid they had left. */
+  const step = 100;
+  const floor = canRaise ? Math.min(Math.max(legalFloor, currentBidCents + step), ceiling) : legalFloor;
 
   // remounted with a fresh key every turn, so plain initial state is the reset
   const [amount, setAmount] = useState(floor);

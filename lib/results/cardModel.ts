@@ -6,6 +6,8 @@ export interface CardRow {
   item: string;
   priceCents: number;
   gifted: boolean;
+  /** optional so fixtures predating Force-or-Take still typecheck as rows */
+  forced?: boolean;
 }
 
 export interface CardPlayer {
@@ -47,6 +49,7 @@ export function buildCardModel(s: RoomState): CardModel {
       item: r.item_name,
       priceCents: r.price_cents,
       gifted: r.gifted,
+      forced: r.forced,
     })),
   }));
 
@@ -86,7 +89,7 @@ export function buildCardModel(s: RoomState): CardModel {
     players,
     topLot,
     longestWar,
-    giftCount: s.roster.filter((r) => r.gifted).length,
+    giftCount: s.roster.filter((r) => r.gifted && !r.forced).length,
   };
 }
 

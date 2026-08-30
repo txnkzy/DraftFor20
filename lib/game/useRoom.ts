@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { readableError } from "./errors";
-import type { RoomState } from "./types";
+import type { OfferChoice, RoomState } from "./types";
 import type { Seat } from "./session";
 
 type Rpc = Record<string, unknown>;
@@ -149,7 +149,7 @@ export function useRoom(code: string, seat: Seat | null) {
     () => ({
       start: () => call("start_draft", { p_token: token }),
       /** the opener's call on a freshly dealt card */
-      offerDecide: (choice: "take" | "give" | "discard") =>
+      offerDecide: (choice: OfferChoice) =>
         call("offer_decide", { p_token: token, p_choice: choice }),
       placeBid: (amountCents: number) =>
         call("place_bid", {

@@ -53,6 +53,7 @@ export interface BoardView {
     itemName: string;
     priceCents: number;
     gifted: boolean;
+    forced: boolean;
     lotId: string;
   } | null;
 }
@@ -106,6 +107,7 @@ export function buildBoardView(
             itemName: resolved.item_name,
             priceCents: resolved.final_price_cents ?? 0,
             gifted: resolved.gifted,
+            forced: resolved.forced,
             lotId: resolved.id,
           }
         : null,

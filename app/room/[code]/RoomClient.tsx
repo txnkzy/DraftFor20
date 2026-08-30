@@ -339,6 +339,12 @@ function RoomLive({ code }: { code: string }) {
   const canTake =
     Boolean(me) && me!.open_slots > 0 && me!.max_legal_bid_cents >= state.room.min_bid_cents;
   const canGive = Boolean(opponent) && opponent!.open_slots > 0 && (me?.gives_left ?? 0) > 0;
+  /* Short of the minimum with slots still owed. Mirrors offer_decide's own
+     v_can_force exactly: it is the complement of canTake, never an extra
+     door. Without it a broke opener out of gives had nothing to press but
+     "Let it go", every card, until the deck emptied and the results card
+     called them disqualified. */
+  const canForce = Boolean(me) && me!.open_slots > 0 && !canTake;
 
   function actionArea() {
     if (lock) return null;
@@ -350,6 +356,7 @@ function RoomLive({ code }: { code: string }) {
           minBidCents={state!.room.min_bid_cents}
           canTake={canTake}
           canGive={canGive}
+          canForce={canForce}
           givesLeft={me.gives_left}
           givesUnlimited={unlimitedGives}
           opponentName={opponent?.display_name ?? "them"}

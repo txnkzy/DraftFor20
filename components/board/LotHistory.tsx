@@ -8,6 +8,7 @@ const VERB: Record<string, string> = {
   reveal: "dealt",
   offer_take: "took it",
   offer_give: "gave it away",
+  offer_forced: "had to take it",
   discard: "let it go",
   raise: "raised",
   pass: "passed",

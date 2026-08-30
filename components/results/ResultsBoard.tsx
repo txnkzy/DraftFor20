@@ -94,7 +94,7 @@ export function ResultsBoard({
                     <span className="min-w-0 flex-1 truncate text-[0.875rem]" title={r.item}>
                       {r.item}
                       {r.gifted ? (
-                        <span className="type-label ml-1.5 text-teal">given</span>
+                        <span className="type-label ml-1.5 text-teal">{r.forced ? "forced" : "given"}</span>
                       ) : null}
                     </span>
                     <span

@@ -60,7 +60,7 @@ export function RosterColumn({
               >
                 {r.item_name}
                 {r.gifted ? (
-                  <span className="type-label ml-1.5 text-teal">given</span>
+                  <span className="type-label ml-1.5 text-teal">{r.forced ? "forced" : "given"}</span>
                 ) : null}
               </span>
               <span

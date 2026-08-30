@@ -21,7 +21,13 @@ export function BidBoard({
 }: {
   view: BoardView;
   children?: ReactNode;
-  lock?: { seat: number; itemName: string; priceCents: number; gifted: boolean } | null;
+  lock?: {
+    seat: number;
+    itemName: string;
+    priceCents: number;
+    gifted: boolean;
+    forced?: boolean;
+  } | null;
   /** bump to replay the raise pulse */
   raiseKey?: number;
 }) {
@@ -39,7 +45,7 @@ export function BidBoard({
         className="panel flex flex-col items-center gap-1 px-4 py-8 text-center"
         style={{ borderRadius: "var(--radius-card)", borderColor: "var(--color-teal)" }}
       >
-        <span className="type-label text-teal">{lock.gifted ? "handed over" : "locked"}</span>
+        <span className="type-label text-teal">{lock.forced ? "forced on them" : lock.gifted ? "handed over" : "locked"}</span>
         <p className="type-display anim-lock-drop mt-1 text-[1.75rem]">{lock.itemName}</p>
         <p className="type-num text-[1.5rem] leading-none text-gold">
           {lock.gifted ? "free" : <><span>$</span><FlipDigits text={digitsOf(lock.priceCents)} /></>}

@@ -9,11 +9,21 @@ import type { OfferChoice } from "@/lib/game/types";
  * the interesting one: handing the card to your opponent costs you nothing and
  * costs them a roster spot they did not choose. Gives are budgeted, so this is
  * a weapon you spend rather than a way to sit the draft out.
+ *
+ * THE THIRD MOVE IS NOT A CHOICE. A player who has spent down past the
+ * minimum bid cannot Take, and once their gives are gone they cannot Give
+ * either — and they still owe roster slots. This used to render a "Let it go"
+ * button, which dealt the next card, which they also could not afford, until
+ * the deck ran out and the results screen called them disqualified. Now the
+ * card lands on their own roster for nothing. It is the floor of the format,
+ * not a punishment, so it is presented as the move it is rather than as an
+ * error state.
  */
 export function OfferCard({
   minBidCents,
   canTake,
   canGive,
+  canForce,
   givesLeft,
   givesUnlimited = false,
   opponentName,
@@ -23,6 +33,8 @@ export function OfferCard({
   minBidCents: number;
   canTake: boolean;
   canGive: boolean;
+  /** short of the minimum bid, but still owed slots: the card lands free */
+  canForce: boolean;
   givesLeft: number;
   /** the cap cannot bind, so don't count down toward it */
   givesUnlimited?: boolean;
@@ -30,6 +42,28 @@ export function OfferCard({
   pending: boolean;
   onDecide: (choice: OfferChoice) => void;
 }) {
+  /* Broke, and nobody to hand it to. The card is theirs either way, so the
+     only honest thing to render is the button that says so. */
+  if (!canTake && !canGive && canForce) {
+    return (
+      <div className="flex flex-col gap-3">
+        <Button
+          variant="primary"
+          size="lg"
+          disabled={pending}
+          onClick={() => onDecide("force")}
+        >
+          Take it free
+        </Button>
+        <p className="text-center text-[0.75rem] leading-snug text-muted">
+          You can&apos;t cover the {formatCents(minBidCents)} minimum and you&apos;re out of
+          gives, so this one lands on your roster for nothing. That&apos;s the cost of
+          spending big earlier.
+        </p>
+      </div>
+    );
+  }
+
   if (!canTake && !canGive) {
     return (
       <div className="flex flex-col gap-3">

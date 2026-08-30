@@ -22,6 +22,7 @@ declare
     'public.df20_add_to_roster(uuid,uuid,text,integer,boolean)',
     'public.df20_resolve_lot(uuid,text)',
     'public.df20_resolve_gift(uuid,uuid)',
+    'public.df20_force_lot(uuid,uuid)',
     'public.df20_reveal_next(uuid)',
     'public.df20_advance(uuid)',
     'public.df20_public_state(uuid)',
@@ -46,7 +47,11 @@ declare
     'public.df20_ensure_profile()',
     'public.df20_require_verified()',
     -- the client API
-    'public.create_room(text,integer,integer,integer,integer,text,boolean,integer,text,text,text,uuid,text)',
+    -- 14 arguments since 0041_allow_broke, which drops every create_room
+    -- overload before recreating it. Asserting the 13-argument signature made
+    -- df20_selfcheck() fail on a healthy database, which is worse than not
+    -- asserting at all: a tripwire that is always tripped gets ignored.
+    'public.create_room(text,integer,integer,integer,integer,text,boolean,integer,text,text,text,uuid,text,boolean)',
     'public.create_pending_room(text)',
     'public.get_setup_state(uuid)',
     'public.setup_lock_items(uuid,text,text[],integer,integer,integer,integer,integer)',
