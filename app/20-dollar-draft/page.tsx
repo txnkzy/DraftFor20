@@ -61,8 +61,8 @@ const RULES = [
     p: "Whoever is up either takes the card at the minimum bid — and then the other player can bid it up — or hands it over for free, which burns a slot on their opponent's roster. Giving is limited, so it is a weapon with ammunition rather than a way out of every card.",
   },
   {
-    h: "You can never bid yourself into a corner",
-    p: "The server keeps back the minimum bid for every slot you still owe. You cannot spend money you need later, so nobody ends the game unable to fill their roster because they got excited on card two.",
+    h: "You can spend everything, and people do",
+    p: "By default a bid can take you to zero, because that is how the trend is played. Nobody can ever bid more than they hold, and any slot you can no longer afford is filled for you at $0 — so going broke is dramatic rather than fatal. Rooms can also be created with a reserve that keeps back the minimum for every slot you still owe.",
   },
 ];
 

@@ -23,7 +23,7 @@ const faq = {
       name: "How much can I bid in the $20 draft?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "Never more than your remaining bankroll, and never so much that you could not still afford the minimum bid on every slot you have left to fill. With $20, five slots and a $1 minimum, your first bid is capped at $16, because the other four slots need a dollar each held back.",
+        text: "Never more than the money you are holding. By default that is the only limit, so you may spend your whole bankroll on a single name and let Force-or-Take fill the rest of your roster. Rooms can optionally be created with the Keep a reserve setting, which also holds back the minimum bid for every slot you still owe.",
       },
     },
     {
@@ -47,7 +47,7 @@ const faq = {
       name: "What happens if I run out of money?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "You are broke, not eliminated. You can no longer raise, but your remaining slots still fill through the take-and-give mechanic, so a draft never deadlocks because somebody overspent.",
+        text: "You are broke, not eliminated. You can no longer raise, but any card opened by a player who cannot afford it is forced onto their own roster at $0, so a draft never deadlocks because somebody overspent. A forced pick is marked as forced rather than as a gift, because nobody chose to hand it over.",
       },
     },
   ],
@@ -67,7 +67,7 @@ function Part({ heading, children }: { heading: string; children: React.ReactNod
 const MISTAKES = [
   {
     t: "Spending big on the first good card",
-    p: "The deck is shuffled, so the first strong name is not the last one. Paying $9 for it on card two feels decisive and leaves you passing on everything for the rest of the draft. The player who wins a card at $9 and then watches three better ones go for $2 has not won anything.",
+    p: "The deck is shuffled, so the first strong name is not the last one. On the default setting nothing stops you spending the lot, which is exactly the trap: paying $9 on card two feels decisive and leaves you passing on everything afterwards. The player who wins a card at $9 and then watches three better ones go for $2 has not won anything.",
   },
   {
     t: "Treating the minimum bid as free",
@@ -98,30 +98,38 @@ export default function HowToPlayPage() {
           <Link href="/20-dollar-draft" className="text-ink underline">
             what is the $20 draft
           </Link>{" "}
-          page. This one is about playing it well: what the spending limits actually stop you
-          doing, when handing a card to your opponent beats keeping it, and the handful of
-          mistakes that decide most first drafts.
+          page. This one is about playing it well: what the two money settings actually do to a draft,
+          when handing a card to your opponent beats keeping it, and the handful of mistakes that
+          decide most first drafts.
         </p>
 
         <div className="mt-8 flex flex-col gap-7">
-          <Part heading="The reserve rule is the only rule that matters">
+          <Part heading="Two money settings, and the default is the reckless one">
             <p>
-              Two limits govern every bid. The obvious one is that you cannot bid more money than
-              you have. The one that actually shapes the game is the reserve: you must always keep
-              back enough to pay the minimum bid on every slot you still owe.
+              One limit never moves: you can never bid more money than you are holding. The other
+              one is chosen by whoever creates the room, and it changes the game completely.
             </p>
             <p>
-              With a $20 bankroll, five slots and a $1 minimum, your very first bid is capped at
-              $16 — one dollar reserved for each of the four slots you are not currently bidding
-              on. Win that card and the cap on your next bid is recalculated against what is left.
-              The board shows this as a hatched section of your money rail, and it is the number
-              to watch rather than your raw balance.
+              <strong className="text-ink">Bid to zero</strong> is the default, because it is how
+              the format is actually played. You may spend your entire bankroll on one name you
+              want. Nothing holds anything back for you, and whatever is left of your roster gets
+              filled by give-or-take afterwards. Blowing everything on card two is a legitimate
+              move here rather than a mistake the software prevents.
             </p>
             <p>
-              The practical consequence: your spending power collapses fastest at the start and
-              flattens out at the end. A player with $6 and one slot left can spend all $6. A
-              player with $6 and four slots left can spend $3. Same money, less than half the
-              power, and the difference is invisible if you are only looking at the balance.
+              <strong className="text-ink">Keep a reserve</strong> is the safer setting. Every bid
+              holds back the minimum for each slot you still owe, so you can always afford to
+              finish. With $20, five slots and a $1 minimum, your first bid caps at $16 — a dollar
+              reserved for each of the four slots you are not bidding on. Win that card and the
+              cap recalculates against what is left. The board draws this as a hatched section of
+              your money rail, and it flashes when you hit the wall.
+            </p>
+            <p>
+              The reserve setting is worth knowing about even if you never use it, because it
+              explains the shape of the default game. With a reserve, spending power collapses
+              early and flattens out. Without one, you keep full spending power right up until the
+              moment you have none at all — which is far more dramatic and far easier to get
+              wrong.
             </p>
           </Part>
 
@@ -161,11 +169,26 @@ export default function HowToPlayPage() {
 
           <Part heading="Running out of money does not end your draft">
             <p>
-              Go broke and you stop being able to raise, but you are not eliminated and the game
-              does not stall. Your remaining slots keep filling through the take-and-give
-              mechanic. This matters strategically: bankrupting your opponent does not remove them
-              from the draft, it just means everything from that point lands on their roster at
-              the minimum. Sometimes that is exactly what they wanted.
+              Go broke and you stop being able to raise, but you are not eliminated and the draft
+              does not stall. When a card is opened by a player who cannot afford it and has no
+              gives left, it is forced onto their own roster at $0. Not their
+              opponent&rsquo;s — being out of money does not entitle you to fill somebody
+              else&rsquo;s board. The card is marked <strong className="text-ink">forced</strong>
+              rather than gifted, and it does not count toward the tally of cards that were handed
+              over for free, because nobody handed it over.
+            </p>
+            <p>
+              You also cannot decline it. Letting a card go is only available when your roster is
+              already full; while a forced pick is on the table it is the outcome, whether you
+              press the button or let the clock run out. That is deliberate — looking away should
+              never produce a result you could not have chosen deliberately.
+            </p>
+            <p>
+              Strategically this cuts both ways. Bankrupting your opponent does not remove them
+              from the draft; it means their remaining slots fill for nothing while your own
+              spending power keeps shrinking against the reserve. Spending hard is a real strategy
+              rather than a way to lose, and finishing broke with a full roster is a perfectly
+              respectable draft. Finishing broke is not the same as finishing short.
             </p>
           </Part>
 
