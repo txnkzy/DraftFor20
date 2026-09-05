@@ -168,6 +168,18 @@ export default function TwentyDollarDraftPage() {
           </p>
         </section>
 
+        <section className="mt-12 border-t pt-4 rule">
+          <h2 className="type-display text-[1rem]">Once you know the rules</h2>
+          <p className="mt-3 text-[0.9375rem] leading-relaxed text-muted">
+            Knowing how a draft runs and being good at one are different things. The{" "}
+            <Link href="/how-to-play" className="text-ink underline">
+              strategy guide
+            </Link>{" "}
+            covers what the reserve rule really stops you doing, why giving a card away is an
+            attack rather than a surrender, and the four mistakes that decide most first drafts.
+          </p>
+        </section>
+
         <p className="mt-14 text-[0.875rem] text-muted">
           <Link href="/" className="text-ink underline">
             DraftFor20

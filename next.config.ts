@@ -44,6 +44,17 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        // The Vercel deployment domain serves this site byte for byte, with
+        // its own robots.txt saying Allow: /. That is the whole site
+        // duplicated on a second crawlable host — the canonical www copy has
+        // to compete with it, and a reviewer following the wrong one sees an
+        // origin that does not match the domain on the account. Deployment
+        // hosts get noindex; the canonical domain is untouched.
+        source: "/:path*",
+        has: [{ type: "host", value: "(?<deployHost>.*\\.vercel\\.app)" }],
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
+      },
+      {
         source: "/:path*",
         headers: [
           { key: "Content-Security-Policy", value: csp },

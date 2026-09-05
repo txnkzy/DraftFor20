@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { CONTACT_EMAIL } from "@/lib/site";
 import { HeaderAccount } from "./HeaderAccount";
 import { usePremium } from "@/lib/premium";
 
@@ -56,18 +55,24 @@ export function Footer() {
         <Link href="/20-dollar-draft" className="text-[0.8125rem] text-muted hover:text-ink">
           What is the $20 draft?
         </Link>
+        <Link href="/how-to-play" className="text-[0.8125rem] text-muted hover:text-ink">
+          How to play
+        </Link>
+        <Link href="/draft-categories" className="text-[0.8125rem] text-muted hover:text-ink">
+          Categories
+        </Link>
+        <Link href="/about" className="text-[0.8125rem] text-muted hover:text-ink">
+          About
+        </Link>
+        <Link href="/contact" className="text-[0.8125rem] text-muted hover:text-ink">
+          Contact
+        </Link>
         <Link href="/privacy" className="text-[0.8125rem] text-muted hover:text-ink">
           Privacy
         </Link>
         <Link href="/terms" className="text-[0.8125rem] text-muted hover:text-ink">
           Terms
         </Link>
-        <a
-          href={`mailto:${CONTACT_EMAIL}`}
-          className="text-[0.8125rem] text-muted hover:text-ink"
-        >
-          Support
-        </a>
         <span className="ml-auto text-[0.75rem] text-muted">
           Play money. No wagering, no payouts.
         </span>

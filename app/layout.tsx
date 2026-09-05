@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { SITE_URL } from "@/lib/site";
 import { Bricolage_Grotesque, Instrument_Sans } from "next/font/google";
 import "./globals.css";
 
@@ -14,6 +15,12 @@ const instrument = Instrument_Sans({
 });
 
 export const metadata: Metadata = {
+  // metadataBase turns every relative `alternates.canonical` in the app into
+  // an absolute URL. Without it only the one page that hardcoded SITE_URL
+  // emitted a canonical at all, so the apex, the www copy and the Vercel
+  // deployment host each looked like a separate site with the same content.
+  metadataBase: new URL(SITE_URL),
+  alternates: { canonical: "/" },
   title: "DraftFor20 — the $20 auction draft",
   description:
     "Two players, one bankroll. The deck deals a name, you fight over what it is worth, and the board settles the argument.",

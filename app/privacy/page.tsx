@@ -4,6 +4,7 @@ import { Clause, LegalShell } from "@/components/site/LegalShell";
 import { CONTACT_EMAIL, OPERATOR, RETENTION_DAYS } from "@/lib/site";
 
 export const metadata: Metadata = {
+  alternates: { canonical: "/privacy" },
   title: "Privacy Policy — DraftFor20",
   description: "What DraftFor20 collects, why, how long it is kept and how to have it deleted.",
 };

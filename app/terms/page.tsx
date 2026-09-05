@@ -4,6 +4,7 @@ import { Clause, LegalShell } from "@/components/site/LegalShell";
 import { CONTACT_EMAIL, JURISDICTION, OPERATOR } from "@/lib/site";
 
 export const metadata: Metadata = {
+  alternates: { canonical: "/terms" },
   title: "Terms of Service — DraftFor20",
   description: "The rules for using DraftFor20. It is a game with play money and no payouts.",
 };

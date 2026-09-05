@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import { Footer, Header } from "@/components/site/Chrome";
 import { PlanCards } from "@/components/premium/PlanCards";
 import { usePremium } from "@/lib/premium";
@@ -37,10 +38,26 @@ function NotOpenYet() {
   );
 }
 
+/**
+ * useSearchParams() opts its whole subtree out of PRERENDERING, so when this
+ * lived in PricingClient the entire page server-rendered as null and a
+ * crawler was served a document containing the title and nothing else. It is
+ * isolated here, behind its own boundary, so that everything around it —
+ * which is all of the actual content — still renders on the server.
+ */
+function CancelledNotice() {
+  const q = useSearchParams();
+  if (q.get("cancelled") !== "1") return null;
+  return (
+    <p className="mt-5 border border-teal px-3 py-2.5 text-[0.875rem] text-ink">
+      <span className="type-label text-teal">checkout cancelled</span>{" "}
+      Nothing was charged. Everything free still works exactly as it did.
+    </p>
+  );
+}
+
 export function PricingClient() {
   const premium = usePremium();
-  const q = useSearchParams();
-  const cancelled = q.get("cancelled") === "1";
 
   return (
     <>
@@ -54,12 +71,9 @@ export function PricingClient() {
 
         <NotOpenYet />
 
-        {cancelled ? (
-          <p className="mt-5 border border-teal px-3 py-2.5 text-[0.875rem] text-ink">
-            <span className="type-label text-teal">checkout cancelled</span>{" "}
-            Nothing was charged. Everything free still works exactly as it did.
-          </p>
-        ) : null}
+        <Suspense fallback={null}>
+          <CancelledNotice />
+        </Suspense>
 
         {premium.active ? (
           <div className="mt-6 border p-4" style={{ borderColor: "var(--color-teal)" }}>
