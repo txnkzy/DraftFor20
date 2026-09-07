@@ -126,6 +126,39 @@
   @media (pointer: coarse) {
     .btn { min-height: 44px; }
     button:not(.btn), a:not(.btn) { touch-action: manipulation; }
+
+    /* THE NAV LINKS WERE 14px TALL. Over half the traffic is on a phone and
+       the header and footer links were text with no box around them, so the
+       tap target was the height of the glyphs. This gives them a 44px one
+       WITHOUT changing how they look: the padding is vertical only and
+       centred, so the text sits exactly where it did on a desktop, where
+       this block does not apply at all. */
+    nav a, nav button, footer a, header > div > a {
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+    }
+
+    /* Standalone controls — the category filter chips on /new were 24px, and
+       every small button in the console the same. Buttons already centre
+       their text, so inline-flex with centring on both axes renders the same
+       and simply grows the box. Links in prose are deliberately NOT included:
+       turning an <a> inside a paragraph into a 44px flex box would wreck the
+       line it sits in. */
+    button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+    }
+
+    /* A 16px checkbox is a 16px target. 24px is the practical ceiling before
+       it stops looking like a checkbox; the label beside it is what most
+       thumbs actually hit. */
+    input[type="checkbox"], input[type="radio"] {
+      min-width: 24px;
+      min-height: 24px;
+    }
   }
 
   /* coral is the ACT button and nothing else */

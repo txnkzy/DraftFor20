@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import Script from "next/script";
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import {
@@ -51,6 +52,15 @@ export function Analytics() {
   // denied, before anything is able to measure
   useEffect(() => initConsentDefaults(), []);
 
+  /* NOT OVER A LIVE SURFACE. The banner is fixed to the bottom, which on a
+     375px phone lands exactly on top of Raise and Pass while a bid clock is
+     running. Asking somebody to answer a cookie question mid-auction is the
+     wrong trade in both directions, so these routes never show it. Anyone who
+     only ever arrives at a room link is therefore never measured — which is
+     the safe direction to fail in, and the honest one. */
+  const path = usePathname() ?? "";
+  const liveSurface = /^\/(room|obs|vote|judge|setup)(\/|$)/.test(path);
+
   if (!GA_ID) return null;
 
   return (
@@ -71,7 +81,7 @@ export function Analytics() {
         </>
       ) : null}
 
-      {mounted && consent === null ? <ConsentBanner /> : null}
+      {mounted && consent === null && !liveSurface ? <ConsentBanner /> : null}
     </>
   );
 }
@@ -84,10 +94,19 @@ function ConsentBanner() {
       className="fixed inset-x-0 bottom-0 z-50 border-t bg-board px-4 py-3 rule"
     >
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 sm:flex-row sm:items-center">
+        {/* Four lines of copy plus two buttons ate ~180px off the bottom of
+            every page on a 375px screen. The short form says the same thing;
+            the full version is kept for screens with room for it. */}
         <p className="flex-1 text-[0.8125rem] leading-relaxed text-muted">
-          <span className="text-ink">Measure how the site is doing?</span> Google Analytics tells
-          us how many people arrive and how many start a draft. Say no and nothing loads — no
-          request, no cookie, no identifier. Either way the game is unchanged.{" "}
+          <span className="text-ink">Measure how the site is doing?</span>{" "}
+          <span className="sm:hidden">
+            Google Analytics, only if you allow it. Decline and nothing loads.{" "}
+          </span>
+          <span className="hidden sm:inline">
+            Google Analytics tells us how many people arrive and how many start a draft. Say no
+            and nothing loads — no request, no cookie, no identifier. Either way the game is
+            unchanged.{" "}
+          </span>
           <a className="text-gold underline" href="/privacy">
             What we collect
           </a>

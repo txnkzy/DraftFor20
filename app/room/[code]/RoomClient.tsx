@@ -455,20 +455,31 @@ function RoomLive({ code }: { code: string }) {
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-lg flex-col lg:max-w-6xl">
       <div className="sticky top-0 z-20 border-b bg-board px-4 rule">
-        <div className="flex items-baseline justify-between gap-3 pt-3">
+        <div className="flex flex-nowrap items-baseline justify-between gap-2 pt-3 sm:gap-3">
           <div className="flex min-w-0 items-baseline gap-3">
             {leaveButton}
             <h1 className="type-display truncate text-[0.875rem]">{state.room.title}</h1>
           </div>
           <div className="flex shrink-0 items-baseline gap-3">
             <button
-              className="type-label text-muted hover:text-ink"
+              className="type-label shrink-0 text-muted hover:text-ink"
               aria-pressed={muted}
+              aria-label={
+                muted ? "Sound is off" : audioReady ? "Sound is on" : "Tap to enable sound"
+              }
               onClick={() => setMuted(!muted)}
             >
-              {/* if the browser still has audio locked, say so rather than
-                  claiming "sound on" and playing nothing */}
-              {muted ? "sound off" : audioReady ? "sound on" : "tap to enable sound"}
+              {/* The full sentence is right on a desktop and ruinous at 375px,
+                  where "tap to enable sound" pushed the room title down to
+                  "Bid Ty…" and wrapped the home link onto two lines. The short
+                  form carries the same meaning; the aria-label keeps the long
+                  one for anyone who cannot see the difference. */}
+              <span className="sm:hidden">
+                {muted ? "muted" : audioReady ? "sound" : "sound off"}
+              </span>
+              <span className="hidden sm:inline">
+                {muted ? "sound off" : audioReady ? "sound on" : "tap to enable sound"}
+              </span>
             </button>
             <CopyCode code={code} />
           </div>
