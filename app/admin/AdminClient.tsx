@@ -86,6 +86,28 @@ interface EventRow {
   status: string;
   detail: string | null;
   at: string;
+  amount_cents: number | null;
+  currency: string | null;
+  /** null on a failure row, which is exactly what that row means */
+  profile_id: string | null;
+  email: string | null;
+  handle: string | null;
+}
+
+interface Money {
+  currency: string;
+  gross_cents: number;
+  payments: number;
+}
+interface BillingStats {
+  totals: Money[];
+  this_month: Money[];
+  by_kind: Record<string, number>;
+  paying_accounts: number;
+  active_now: number;
+  subscriptions: number;
+  failed_events: number;
+  first_payment: string | null;
 }
 
 export function AdminClient() {
@@ -101,6 +123,7 @@ function Admin() {
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [activity, setActivity] = useState<Activity | null>(null);
   const [events, setEvents] = useState<EventRow[]>([]);
+  const [billing, setBilling] = useState<BillingStats | null>(null);
   const [query, setQuery] = useState("");
   const [days, setDays] = useState("30");
   const [busy, setBusy] = useState<string | null>(null);
@@ -114,12 +137,13 @@ function Admin() {
     const sb = supabaseBrowser();
     const { data: admin } = await sb.rpc("df20_is_admin");
     if (!admin) return { admin: false };
-    const [u, k, l, a, e] = await Promise.all([
+    const [u, k, l, a, e, b] = await Promise.all([
       sb.rpc("admin_list_profiles", { p_query: q || null }),
       sb.rpc("admin_library_queue"),
       sb.rpc("admin_library_list"),
       sb.rpc("admin_activity"),
       sb.rpc("admin_recent_events", { p_limit: 40 }),
+      sb.rpc("admin_billing_stats"),
     ]);
     return {
       admin: true,
@@ -128,6 +152,7 @@ function Admin() {
       library: (l.data as LibraryItem[] | null) ?? [],
       activity: (a.data as Activity | null) ?? null,
       events: (e.data as EventRow[] | null) ?? [],
+      billing: (b.data as BillingStats | null) ?? null,
     };
   }, []);
 
@@ -138,6 +163,7 @@ function Admin() {
     setQueue(next.queue ?? []);
     setLibrary(next.library ?? []);
     setActivity(next.activity ?? null);
+    setBilling(next.billing ?? null);
     setEvents(next.events ?? []);
   }, []);
 
@@ -729,6 +755,64 @@ function Admin() {
         {tab === "events" ? (
           <section className="mt-6">
             <h2 className="type-display text-[1rem]">Billing events</h2>
+
+            {billing ? (
+              <>
+                {/* Grouped by currency rather than summed. A $1 pass on a UK
+                    card settles as 100 usd while Stripe shows the buyer 77p;
+                    one total across both would be arithmetic on two different
+                    things. Failed events are excluded — they carry an amount
+                    too, and counting them would report money that never came. */}
+                <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-4">
+                  {billing.totals.length === 0 ? (
+                    <div>
+                      <dt className="type-label text-muted">taken so far</dt>
+                      <dd className="type-num text-[1.375rem]">nothing yet</dd>
+                    </div>
+                  ) : (
+                    billing.totals.map((t) => (
+                      <div key={t.currency}>
+                        <dt className="type-label text-muted">
+                          taken · {t.currency}
+                        </dt>
+                        <dd className="type-num text-[1.375rem] text-gold">
+                          {money(t.gross_cents, t.currency)}
+                        </dd>
+                        <dd className="type-num text-[0.6875rem] text-muted">
+                          {t.payments} payment{t.payments === 1 ? "" : "s"}
+                        </dd>
+                      </div>
+                    ))
+                  )}
+                  {billing.this_month.map((t) => (
+                    <div key={`m-${t.currency}`}>
+                      <dt className="type-label text-muted">this month · {t.currency}</dt>
+                      <dd className="type-num text-[1.375rem]">
+                        {money(t.gross_cents, t.currency)}
+                      </dd>
+                      <dd className="type-num text-[0.6875rem] text-muted">
+                        {t.payments} payment{t.payments === 1 ? "" : "s"}
+                      </dd>
+                    </div>
+                  ))}
+                  <Stat label="paying accounts" value={billing.paying_accounts} />
+                  <Stat label="premium right now" value={billing.active_now} />
+                  <Stat label="active subscriptions" value={billing.subscriptions} />
+                  <Stat label="failed events" value={billing.failed_events} />
+                </dl>
+                {billing.first_payment ? (
+                  <p className="type-num mt-2 text-[0.6875rem] text-muted">
+                    first payment {new Date(billing.first_payment).toLocaleDateString()}
+                    {Object.keys(billing.by_kind).length > 0
+                      ? " · " +
+                        Object.entries(billing.by_kind)
+                          .map(([k, n]) => `${k.replace(/_/g, " ")} ${n}`)
+                          .join(" · ")
+                      : ""}
+                  </p>
+                ) : null}
+              </>
+            ) : null}
             <p className="mt-1 text-[0.875rem] leading-relaxed text-muted">
               Every Stripe webhook this app has processed, and every one it failed to. This is
               the only error surface here — anything else worth reading is in Vercel&apos;s
@@ -784,6 +868,21 @@ function Admin() {
                     {e.status}
                   </span>
                   <span className="type-display text-[0.8125rem]">{e.kind}</span>
+                  {e.amount_cents ? (
+                    <span className="type-num shrink-0 text-[0.8125rem] text-gold">
+                      {money(e.amount_cents, e.currency ?? "")}
+                    </span>
+                  ) : null}
+                  {e.email || e.handle ? (
+                    <span className="min-w-0 shrink-0 truncate text-[0.75rem]">
+                      {e.email ?? e.handle}
+                      {e.profile_id ? (
+                        <span className="type-num ml-1.5 text-[0.6875rem] text-muted">
+                          {e.profile_id.slice(0, 8)}
+                        </span>
+                      ) : null}
+                    </span>
+                  ) : null}
                   <span className="min-w-0 flex-1 truncate font-mono text-[0.75rem] text-muted">
                     {e.detail || e.event_id}
                   </span>
@@ -858,6 +957,19 @@ function Split({ title, rows }: { title: string; rows: [string, number][] }) {
       </ul>
     </div>
   );
+}
+
+/** Stripe reports settlement amounts in minor units; zero-decimal currencies
+ *  like JPY do not have them, so this asks Intl rather than dividing by 100. */
+function money(cents: number, currency: string): string {
+  const code = (currency || "usd").toUpperCase();
+  try {
+    return new Intl.NumberFormat("en", { style: "currency", currency: code }).format(
+      cents / 100,
+    );
+  } catch {
+    return `${(cents / 100).toFixed(2)} ${code}`;
+  }
 }
 
 function fmtDuration(seconds: number | null): string {

@@ -28,6 +28,9 @@ export interface BillingWrite {
   source?: "stripe_subscription" | "game_night_pass" | null;
   /** the pass adds hours rather than setting a date */
   extendHours?: number | null;
+  /** settlement amount as Stripe reports it, with its currency */
+  amountCents?: number | null;
+  currency?: string | null;
 }
 
 export async function applyBilling(w: BillingWrite): Promise<{ ok: boolean; detail?: string }> {
@@ -45,6 +48,8 @@ export async function applyBilling(w: BillingWrite): Promise<{ ok: boolean; deta
     p_premium_until: w.premiumUntil ? w.premiumUntil.toISOString() : null,
     p_source: w.source ?? null,
     p_extend_hours: w.extendHours ?? null,
+    p_amount_cents: w.amountCents ?? null,
+    p_currency: w.currency ?? null,
   });
   if (error) return { ok: false, detail: error.message };
 

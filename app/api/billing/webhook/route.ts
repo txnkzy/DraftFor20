@@ -106,6 +106,8 @@ export async function POST(req: Request) {
               status: "pass",
               source: "game_night_pass",
               extendHours: 24,
+              amountCents: s.amount_total,
+              currency: s.currency,
             }),
             "day pass",
           );
@@ -123,6 +125,8 @@ export async function POST(req: Request) {
             status: sub?.status ?? "active",
             premiumUntil: sub ? periodEnd(sub) : null,
             source: "stripe_subscription",
+            amountCents: s.amount_total,
+            currency: s.currency,
           }),
           "checkout subscription",
         );
@@ -147,6 +151,8 @@ export async function POST(req: Request) {
             status: "pass",
             source: "game_night_pass",
             extendHours: 24,
+            amountCents: pi.amount_received || pi.amount,
+            currency: pi.currency,
           }),
           "day pass (payment_intent)",
         );
@@ -203,6 +209,8 @@ export async function POST(req: Request) {
             status: sub.status,
             premiumUntil: periodEnd(sub),
             source: "stripe_subscription",
+            amountCents: inv.amount_paid,
+            currency: inv.currency,
           }),
           "invoice paid",
         );
