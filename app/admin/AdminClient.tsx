@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { TextInput } from "@/components/ui/Field";
 import { Footer, Header, SetupNotice } from "@/components/site/Chrome";
 import { Changelog } from "@/components/admin/Changelog";
+import { useCollapsed } from "@/components/admin/Collapsed";
 import { TrustSignals } from "@/components/admin/TrustSignals";
 import { supabaseBrowser, supabaseConfigured } from "@/lib/supabase/client";
 
@@ -24,7 +25,7 @@ import { supabaseBrowser, supabaseConfigured } from "@/lib/supabase/client";
  * row — so on a fresh database every RPC behind this page refuses everyone
  * and there is no role system to misconfigure.
  */
-type Tab = "users" | "library" | "activity" | "events";
+type Tab = "users" | "library" | "activity" | "events" | "signals" | "changelog";
 
 interface Row {
   id: string;
@@ -178,6 +179,11 @@ function Admin() {
     return copy;
   }, [rows, sort]);
 
+  /* Ten accounts is enough to see who signed up recently; the rest is one tap
+     away. Same for the billing events. */
+  const shownUsers = useCollapsed(sorted, 10);
+  const shownEvents = useCollapsed(events, 8);
+
   if (isAdmin === null) {
     return (
       <>
@@ -250,6 +256,8 @@ function Admin() {
               ["library", `Library ${queue.length > 0 ? `· ${queue.length} queued` : ""}`],
               ["activity", "Activity"],
               ["events", "Events"],
+              ["signals", "Signals"],
+              ["changelog", "Changelog"],
             ] as const
           ).map(([id, label]) => (
             <button
@@ -331,7 +339,7 @@ function Admin() {
                       </td>
                     </tr>
                   ) : null}
-                  {sorted.map((r) => (
+                  {shownUsers.visible.map((r) => (
                     <tr key={r.id}>
                       <td className="border-b py-2.5 pr-3 rule">
                         <span className="type-display flex items-baseline gap-1.5 truncate text-[0.8125rem]">
@@ -446,6 +454,15 @@ function Admin() {
                 </tbody>
               </table>
             </div>
+            {shownUsers.hidden > 0 ? (
+              <button
+                type="button"
+                className="type-label mt-3 min-h-11 border px-3 text-muted rule hover:text-ink"
+                onClick={shownUsers.toggle}
+              >
+                {shownUsers.label("accounts")}
+              </button>
+            ) : null}
             <p className="mt-3 text-[0.75rem] leading-relaxed text-muted">
               A grant writes the same <span className="type-num text-ink">premium_until</span> a
               subscription writes, so it unlocks exactly the same things. &ldquo;Last seat&rdquo;
@@ -756,7 +773,7 @@ function Admin() {
                   </ol>
                 </li>
               ) : null}
-              {events.map((e) => (
+              {shownEvents.visible.map((e) => (
                 <li key={e.event_id} className="flex flex-wrap items-baseline gap-3 border-b py-2.5 rule">
                   <span
                     className="type-label shrink-0"
@@ -779,13 +796,12 @@ function Admin() {
           </section>
         ) : null}
 
-        {/* These two are standing panels rather than tabs, so they belong
-            AFTER the tab and its content. Sitting between the nav and the
-            section it controls, they put 1500px between a tab and the thing
-            it changed — which reads exactly like a tab that does nothing. */}
-        <TrustSignals />
+        {/* Both used to render on EVERY tab, ~490 lines of markup apiece, so
+            whichever tab you picked you scrolled through the other two panels
+            to reach anything below. One tab, one panel. */}
+        {tab === "signals" ? <TrustSignals /> : null}
 
-        <Changelog />
+        {tab === "changelog" ? <Changelog /> : null}
       </main>
       <Footer />
     </>

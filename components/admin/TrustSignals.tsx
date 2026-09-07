@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { TextInput } from "@/components/ui/Field";
+import { useCollapsed } from "./Collapsed";
 import { supabaseBrowser } from "@/lib/supabase/client";
 
 /**
@@ -135,6 +136,7 @@ export function TrustSignals() {
 
   const hint = FILTERS.find((f) => f.id === filter)?.hint ?? "";
   const captureBegan = captureStart(rows);
+  const shown = useCollapsed(rows, 8);
 
   return (
     <section className="mt-11">
@@ -192,7 +194,7 @@ export function TrustSignals() {
       ) : null}
 
       <ul className="mt-2 flex flex-col">
-        {rows.map((r) => {
+        {shown.visible.map((r) => {
           const { flags, strong } = notable(r);
           const worthLook = strong || flags.length >= 2;
           const isOpen = open === r.id;
@@ -275,6 +277,15 @@ export function TrustSignals() {
           <li className="type-label py-3 text-muted">nothing matches</li>
         ) : null}
       </ul>
+      {shown.hidden > 0 ? (
+        <button
+          type="button"
+          className="type-label mt-3 min-h-11 border px-3 text-muted rule hover:text-ink"
+          onClick={shown.toggle}
+        >
+          {shown.label("accounts")}
+        </button>
+      ) : null}
 
       <p className="mt-4 text-[0.75rem] leading-relaxed text-muted">
         To act on an account, use the grant and revoke controls above &mdash; deliberately, one

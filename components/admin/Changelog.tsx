@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { accessToken } from "@/lib/auth";
 import { CATEGORY_LABEL, type Category, type CommitEntry } from "@/lib/changelog/categorize";
+import { useCollapsed } from "./Collapsed";
 import { supabaseBrowser } from "@/lib/supabase/client";
 
 /**
@@ -94,6 +95,8 @@ export function Changelog() {
       (who === "all" || e.author === who) &&
       (cat === "all" || (e.categories[cat]?.length ?? 0) > 0),
   );
+
+  const shownAudit = useCollapsed(audit, 8);
 
   return (
     <section className="mt-11">
@@ -248,7 +251,7 @@ export function Changelog() {
         {audit.length === 0 ? (
           <li className="type-label border-b py-3 text-muted rule">nothing recorded yet</li>
         ) : null}
-        {audit.map((a) => (
+        {shownAudit.visible.map((a) => (
           <li key={a.id} className="flex flex-wrap items-baseline gap-x-3 border-b py-2.5 rule">
             <span className="type-label text-gold">{a.action}</span>
             <span className="min-w-0 flex-1 truncate text-[0.8125rem] text-muted">
@@ -259,6 +262,15 @@ export function Changelog() {
           </li>
         ))}
       </ul>
+      {shownAudit.hidden > 0 ? (
+        <button
+          type="button"
+          className="type-label mt-3 min-h-11 border px-3 text-muted rule hover:text-ink"
+          onClick={shownAudit.toggle}
+        >
+          {shownAudit.label("actions")}
+        </button>
+      ) : null}
     </section>
   );
 }
