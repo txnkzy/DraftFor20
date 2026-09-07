@@ -35,10 +35,39 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
+/* Site-level identity, emitted once. Individual pages already describe
+   themselves (VideoGame, FAQPage); nothing described the SITE, so Search
+   Console had no name, logo or canonical home to attach them to. */
+const siteSchema = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": `${SITE_URL}/#org`,
+      name: "DraftFor20",
+      url: SITE_URL,
+      logo: `${SITE_URL}/icon.svg`,
+      email: "support@draftfor20.com",
+    },
+    {
+      "@type": "WebSite",
+      "@id": `${SITE_URL}/#site`,
+      name: "DraftFor20",
+      url: SITE_URL,
+      publisher: { "@id": `${SITE_URL}/#org` },
+      inLanguage: "en",
+    },
+  ],
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${bricolage.variable} ${instrument.variable}`}>
       <body>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(siteSchema) }}
+        />
         <div id="app-root">{children}</div>
         <Analytics />
       </body>

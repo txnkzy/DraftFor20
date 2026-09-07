@@ -61,6 +61,15 @@ export function Footer() {
         <Link href="/draft-categories" className="text-[0.8125rem] text-muted hover:text-ink">
           Categories
         </Link>
+        <Link href="/house-rules" className="text-[0.8125rem] text-muted hover:text-ink">
+          House rules
+        </Link>
+        <Link
+          href="/auction-draft-vs-snake-draft"
+          className="text-[0.8125rem] text-muted hover:text-ink"
+        >
+          Auction vs snake
+        </Link>
         <Link href="/about" className="text-[0.8125rem] text-muted hover:text-ink">
           About
         </Link>
