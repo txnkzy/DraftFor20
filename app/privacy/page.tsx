@@ -86,11 +86,10 @@ export default function PrivacyPage() {
           stop flooding and for nothing else.
         </p>
         <p>
-          <strong className="text-ink">One cookie, and only if you vote.</strong> Voting on a draft
-          you are watching sets <code>df20_av</code>, a cookie holding a random identifier so the
-          same browser cannot vote twice in the same room. It is set by the server, unreadable by
-          scripts, lasts a year and is tied to nothing else about you. There are no analytics or
-          advertising cookies anywhere on the site.
+          <strong className="text-ink">One cookie of our own, and only if you vote.</strong>{" "}
+          Voting on a draft you are watching sets <code>df20_av</code>, a cookie holding a random
+          identifier so the same browser cannot vote twice in the same room. It is set by the
+          server, unreadable by scripts, lasts a year and is tied to nothing else about you.
         </p>
         <p>
           Fonts are served from our own domain rather than a font CDN. Generating the downloadable
@@ -104,7 +103,41 @@ export default function PrivacyPage() {
           for anyone loading an image from it. And the sign-up page runs a Cloudflare Turnstile
           check to keep automated sign-ups out, which means Cloudflare sees that request. Neither
           is used to profile you, and neither is present on a room you are simply playing in
-          without images.
+          without images. A third applies only if you accept analytics: the Google Analytics
+          script is then fetched from Google and sees your address like any other request.
+        </p>
+      </Clause>
+
+      <Clause heading="Analytics, and the choice you are given">
+        <p>
+          <strong className="text-ink">Nothing measures you unless you say yes.</strong> The first
+          time you arrive you are asked whether Google Analytics may run. Until you accept, the
+          script is not fetched at all — no request to Google, no cookie, no identifier. Declining
+          is a real answer and it is remembered; ignoring the question counts as declining.
+        </p>
+        <p>
+          If you accept, Google Analytics 4 sets cookies in your browser and receives your IP
+          address, the pages you open and five things we count on purpose: a visit, a sign-up, a
+          room created, a draft finished, a purchase completed. Those events carry no display
+          name, no room code, no pick, no email — only that the thing happened. We use it to see
+          how many visitors go on to play, which is not something the game database can tell us
+          about people who never signed up.
+        </p>
+        <p>
+          Consent is stored in your browser under <code>df20:consent</code>. To change your mind,
+          clear your site data and you will be asked again.
+        </p>
+        <p>
+          <strong className="text-ink">Advertising.</strong> There are no ads on DraftFor20 today.
+          If that changes, ads would be served by Google AdSense, which sets its own cookies and
+          may use them and your IP address to select and measure adverts, including personalised
+          ones where you have allowed it. That would run under the same consent as above — denied
+          until you accept — and this page would say so before a single ad appeared. Google&apos;s
+          own description of what it collects as a publisher partner lives at{" "}
+          <a className="text-gold" href="https://policies.google.com/technologies/partner-sites"
+             target="_blank" rel="noopener noreferrer">
+            policies.google.com/technologies/partner-sites
+          </a>.
         </p>
       </Clause>
 
@@ -199,6 +232,10 @@ export default function PrivacyPage() {
         <p>
           <strong className="text-ink">Cloudflare</strong> sits in front of the domain and runs the
           anti-automation check on the sign-up page.
+        </p>
+        <p>
+          <strong className="text-ink">Google</strong> receives analytics events, and would serve
+          any future advertising — but only for visitors who have accepted, as described above.
         </p>
         <p>
           Both act as processors on our instructions. Neither is permitted to use your data for

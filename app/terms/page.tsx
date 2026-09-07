@@ -136,6 +136,21 @@ export default function TermsPage() {
         </p>
       </Clause>
 
+      <Clause heading="Cookies, analytics and advertising">
+        <p>
+          Playing needs no cookie and no consent. Two things are optional and both are refusable:
+          a cookie set only if you vote on somebody&apos;s finished draft, and Google Analytics,
+          which does not load at all unless you accept it when asked. If advertising is ever
+          added it would be Google AdSense, under that same consent, and the{" "}
+          <Link className="text-gold" href="/privacy">Privacy Policy</Link> describes exactly what
+          each of them collects.
+        </p>
+        <p>
+          Blocking any of it — a content blocker, a privacy browser, declining the banner — does
+          not degrade the game. There is no version of this service you have to be tracked to use.
+        </p>
+      </Clause>
+
       <Clause heading="Availability and changes">
         <p>
           The service is provided as it stands. We may change, suspend or discontinue any part of

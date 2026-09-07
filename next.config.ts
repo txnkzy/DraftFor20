@@ -10,16 +10,26 @@ const isDev = process.env.NODE_ENV === "development";
  * policy is the next step and is the single biggest remaining hardening win;
  * everything else below is already strict.
  */
+/* Google Analytics, and only Google Analytics. gtag.js is served from
+   googletagmanager.com and reports to the google-analytics.com collector, so
+   both have to be named or the script is blocked and measurement silently
+   never happens — which is exactly what this policy did on the first attempt.
+   AdSense needs a wider allowance and is deliberately NOT pre-approved here:
+   nothing should be reachable before it is actually used. */
+const GA_SCRIPT = "https://www.googletagmanager.com";
+const GA_COLLECT =
+  "https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com";
+
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  `script-src 'self' 'unsafe-inline' ${GA_SCRIPT}${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",           // Tailwind injects a style tag
   "img-src 'self' data: blob: https:",          // host logos are remote URLs
   "font-src 'self' data:",                      // next/font self-hosts
   // the ws://127.0.0.1:54321 entry is the local PostgREST harness in
   // supabase/tests/local-harness.md; without it realtime spams the console
   // with CSP violations while the app quietly falls back to polling
-  "connect-src 'self' https://*.supabase.co wss://*.supabase.co" +
+  `connect-src 'self' https://*.supabase.co wss://*.supabase.co ${GA_COLLECT} ${GA_SCRIPT}` +
     (isDev
       ? " http://127.0.0.1:54321 ws://127.0.0.1:54321 ws://localhost:3000 ws://127.0.0.1:3000"
       : ""),

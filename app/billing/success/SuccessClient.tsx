@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { track } from "@/lib/analytics";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Footer, Header } from "@/components/site/Chrome";
@@ -41,7 +42,14 @@ export function SuccessClient() {
       if (!error) {
         const p = parsePremium(data);
         setState(p);
-        if (p.active) return; // done: stop polling
+        if (p.active) {
+          /* Fired when premium is CONFIRMED ACTIVE by the database, not when
+             Stripe redirected here. The webhook is what grants access and it
+             can land after the customer is already back, so a purchase event
+             on arrival would count checkouts that never actually paid out. */
+          track("purchase", { plan, source: p.source ?? "unknown" });
+          return; // done: stop polling
+        }
       }
       if (Date.now() - started > GIVE_UP_MS) {
         setTimedOut(true);
@@ -51,7 +59,7 @@ export function SuccessClient() {
     };
     void tick();
     return () => { off = true; };
-  }, []);
+  }, [plan]);
 
   const active = state?.active ?? false;
   const until = state?.until ? new Date(state.until) : null;

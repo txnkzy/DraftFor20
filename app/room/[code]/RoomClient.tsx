@@ -17,6 +17,7 @@ import { RecordSurface } from "@/components/content/RecordSurface";
 import { Button } from "@/components/ui/Button";
 import { TextInput } from "@/components/ui/Field";
 import { SetupNotice } from "@/components/site/Chrome";
+import { track } from "@/lib/analytics";
 import { isMoneyWall, readableError } from "@/lib/game/errors";
 import { saveSeat, setActiveSeat, useSeat, useSeats, type Seat } from "@/lib/game/session";
 import { rosterOf, type RoomState } from "@/lib/game/types";
@@ -141,6 +142,23 @@ function RoomLive({ code }: { code: string }) {
     if (!seats.some((s) => s.playerId === controllerId)) return;
     setActiveSeat(code, controllerId);
   }, [hotSeat, controllerId, handoffKey, seats, code]);
+
+  /* A finished draft is the conversion that matters. Keyed on the room id in
+     sessionStorage so a refresh, or the results page being left open, does
+     not count the same draft twice. */
+  const complete = state?.room.status === "complete";
+  const roomId = state?.room.id;
+  useEffect(() => {
+    if (!complete || !roomId) return;
+    const key = `df20:counted:${roomId}`;
+    try {
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, "1");
+    } catch {
+      /* private browsing: worst case the draft is counted twice */
+    }
+    track("draft_completed");
+  }, [complete, roomId]);
 
   const muted = useMuted();
   const audioReady = useAudioReady();

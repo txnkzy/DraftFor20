@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Field, TextInput } from "@/components/ui/Field";
 import { Footer, Header, SetupNotice } from "@/components/site/Chrome";
 import { readableError } from "@/lib/game/errors";
+import { track } from "@/lib/analytics";
 import { isUnderfunded } from "@/lib/game/rules";
 import { saveSeat } from "@/lib/game/session";
 import { solvePow } from "@/lib/pow";
@@ -314,6 +315,8 @@ function NewRoom() {
     }
     const d = data as { room_id: string; code: string; player_id: string; session_token: string; seat: number };
     saveSeat({ roomId: d.room_id, code: d.code, playerId: d.player_id, sessionToken: d.session_token, seat: d.seat });
+    // the conversion is the room existing, not the button being pressed
+    track("room_created", { mode: contentMode });
     router.push(`/room/${d.code}`);
   }
 

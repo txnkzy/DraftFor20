@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { track } from "@/lib/analytics";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
@@ -76,6 +77,8 @@ function SignUp() {
       setError(res.message ?? "Could not create the account.");
       return;
     }
+    // an account now exists, whether or not the address is confirmed yet
+    track("sign_up", { confirmation: res.needsConfirmation ? "pending" : "immediate" });
     if (res.needsConfirmation) {
       setSent(true);
     } else {
