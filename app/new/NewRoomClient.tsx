@@ -66,6 +66,9 @@ const GENRE_LABEL: Record<string, string> = {
  */
 const UNLIMITED_GIVES = 30;
 
+/** How much shelf a phone shows before it asks. Desktop shows everything. */
+const SHELF_ON_PHONE = 8;
+
 export function NewRoomClient() {
   if (!supabaseConfigured()) return <SetupNotice />;
   return <NewRoom />;
@@ -105,6 +108,9 @@ function NewRoom() {
   const [looking, setLooking] = useState(false);
   const [noMatch, setNoMatch] = useState(false);
   const [setupLink, setSetupLink] = useState<string | null>(null);
+  /* phone-only disclosures; both are no-ops at sm: and above */
+  const [shelfOpen, setShelfOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const { user } = useHost();
   const signedIn = Boolean(user);
@@ -410,12 +416,22 @@ function NewRoom() {
               </div>
             ) : null}
 
+            {/* MOBILE ONLY. Thirty-three categories is 1,280px of shelf on a
+                375px screen — over a third of the page before you reach a
+                single setting. The overflow is hidden with `hidden sm:inline`
+                rather than sliced out of the array, so a desktop still renders
+                every one and nothing about that layout changes. The selected
+                category is never hidden, whatever its position. */}
             <div className="flex flex-wrap gap-1.5">
-              {visible.map((c) => (
+              {visible.map((c, i) => (
                 <button
                   key={c.id}
                   onClick={() => { setPicked(c); setTitle(c.name); }}
                   className={`type-label border px-2.5 py-1.5 ${
+                    i >= SHELF_ON_PHONE && !shelfOpen && picked?.id !== c.id
+                      ? "hidden sm:inline-flex"
+                      : ""
+                  } ${
                     picked?.id === c.id ? "border-coral text-coral" : "text-muted rule hover:text-ink"
                   }`}
                 >
@@ -424,6 +440,17 @@ function NewRoom() {
               ))}
               {shelf.length === 0 ? (
                 <span className="text-[0.8125rem] text-muted">loading categories…</span>
+              ) : null}
+              {visible.length > SHELF_ON_PHONE ? (
+                <button
+                  type="button"
+                  className="type-label border border-dashed px-2.5 py-1.5 text-muted rule hover:text-ink sm:hidden"
+                  onClick={() => setShelfOpen((v) => !v)}
+                >
+                  {shelfOpen
+                    ? "fewer"
+                    : `all ${visible.length} (+${visible.length - SHELF_ON_PHONE})`}
+                </button>
               ) : null}
             </div>
 
@@ -684,6 +711,14 @@ function NewRoom() {
             </div>
           ) : null}
 
+          {/* MOBILE ONLY. Four settings groups are ~760px on a phone, sitting
+              between the category and the Create button — so starting a game
+              with the defaults meant scrolling past every knob to reach it.
+              `sm:contents` makes this wrapper vanish on a desktop, where the
+              children lay out exactly as they did before and are always open. */}
+          <div
+            className={`${settingsOpen ? "flex" : "hidden"} flex-col gap-6 sm:contents`}
+          >
           <div className="flex flex-col gap-2">
             <span className="type-label text-muted">players per team</span>
             <div className="flex items-stretch gap-2">
@@ -804,6 +839,21 @@ function NewRoom() {
             </p>
           </div>
 
+          </div>
+
+          {/* the toggle itself, and a reminder of what is set behind it */}
+          <button
+            type="button"
+            className="type-label flex items-center justify-between border px-3 py-3 text-muted rule hover:text-ink sm:hidden"
+            aria-expanded={settingsOpen}
+            onClick={() => setSettingsOpen((v) => !v)}
+          >
+            <span>{settingsOpen ? "hide game settings" : "game settings"}</span>
+            <span className="type-num text-[0.75rem]">
+              {rosterSize} players · {formatCents(bankrollCents)} ·{" "}
+              {timer === 0 ? "no clock" : `${timer}s`}
+            </span>
+          </button>
           {underfunded ? (
             <p className="border border-coral px-3 py-2.5 text-[0.875rem] text-ink">
               <span className="type-label text-coral">heads up</span>{" "}
