@@ -33,25 +33,29 @@
 -- is a nuisance, where the alternative is no rate limiting at all.
 -- ═══════════════════════════════════════════════════════════════════════════
 
--- ── billing: the webhook writes premium and records its own failures ──────
-grant execute on function public.df20_apply_billing_event(
-  text, text, uuid, text, text, text, timestamptz, text, int) to anon;
-grant execute on function public.df20_revoke_premium(text, text, text, text) to anon;
-grant execute on function public.df20_log_billing_failure(text, text, text, text) to anon;
-grant execute on function public.df20_billing_profile(text, uuid) to anon;
-
--- ── signup evidence, written by /api/auth/signup ──────────────────────────
-grant execute on function public.df20_record_signup(
-  text, uuid, text, text, text, text, text) to anon;
-
--- ── the Wikipedia cache writer, every arity that still exists ─────────────
+-- ── grant by NAME, not by signature ───────────────────────────────────────
+-- Naming argument types here hard-codes a signature that a later migration
+-- changes: 0056 replaces df20_apply_billing_event with an arity carrying the
+-- amount, and a grant against the old one then fails on every re-run, taking
+-- the whole bundle with it. Looking up whatever exists keeps this replayable
+-- in any order, and covers the several arities of df20_cache_wikipedia too.
 do $$
 declare r record;
 begin
   for r in
     select p.oid::regprocedure as sig
       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-     where n.nspname = 'public' and p.proname = 'df20_cache_wikipedia'
+     where n.nspname = 'public'
+       and p.proname in (
+         -- billing: the webhook writes premium and records its own failures
+         'df20_apply_billing_event',
+         'df20_revoke_premium',
+         'df20_log_billing_failure',
+         'df20_billing_profile',
+         -- signup evidence, written by /api/auth/signup
+         'df20_record_signup',
+         -- the Wikipedia cache writer, every arity of it
+         'df20_cache_wikipedia')
   loop
     execute 'grant execute on function ' || r.sig || ' to anon';
   end loop;
