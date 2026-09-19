@@ -48,3 +48,21 @@ export const PLAN_ORDER = ["premium", "week", "pass"] as const;
  *  The pass is a one-off `payment`, and getting that wrong bills somebody
  *  every 24 hours. */
 export const RECURRING: ReadonlySet<PlanId> = new Set<PlanId>(["premium", "week"]);
+
+/**
+ * What Stripe's Price object must say for each plan, checked at lookup time.
+ *
+ * The recurring/one-off check alone cannot catch the likeliest setup mistake,
+ * which is the monthly and weekly price ids swapped between their two
+ * variables — both are recurring, so both pass. This catches it by interval.
+ *
+ * Nobody is ever mischarged by a swap, because the amount AND the period both
+ * come off the same Price object, so the card always quotes what Checkout
+ * will take. What a swap produces is a Premium card reading "/week" — wrong
+ * labels rather than a wrong bill. Still worth saying out loud in the log.
+ */
+export const EXPECTED_INTERVAL: Record<PlanId, "month" | "week" | null> = {
+  premium: "month",
+  week: "week",
+  pass: null, // one-off; no recurrence at all
+};

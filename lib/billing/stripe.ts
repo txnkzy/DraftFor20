@@ -1,7 +1,7 @@
 import "server-only";
 import Stripe from "stripe";
 import { SITE_URL } from "@/lib/site";
-import { RECURRING, type PlanId } from "@/lib/plans";
+import { EXPECTED_INTERVAL, RECURRING, type PlanId } from "@/lib/plans";
 
 /**
  * Stripe, optional by design.
@@ -196,6 +196,15 @@ export async function livePlanPrices(): Promise<Record<string, LivePrice>> {
             `stripe price ${id} (${envName}) is ${price.recurring ? "recurring" : "one-off"}, ` +
               `but ${plan} is opened in ${shouldRecur ? "subscription" : "payment"} mode. ` +
               `Checkout will reject this.`,
+          );
+        } else if (
+          price.recurring &&
+          price.recurring.interval !== EXPECTED_INTERVAL[plan]
+        ) {
+          console.error(
+            `stripe price ${id} (${envName}) bills every ${price.recurring.interval}, ` +
+              `but ${plan} expects ${EXPECTED_INTERVAL[plan]}. ` +
+              `The monthly and weekly ids are probably swapped.`,
           );
         }
 
