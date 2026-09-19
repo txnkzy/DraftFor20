@@ -1,6 +1,7 @@
 import "server-only";
 import Stripe from "stripe";
 import { SITE_URL } from "@/lib/site";
+import { RECURRING, type PlanId } from "@/lib/plans";
 
 /**
  * Stripe, optional by design.
@@ -163,19 +164,41 @@ export async function livePlanPrices(): Promise<Record<string, LivePrice>> {
 
   const stripe = getStripe();
   const e = stripeEnv();
-  const wanted: [string, string][] = [
-    ["premium", e.priceId],
-    ["week", e.weekPriceId],
-    ["pass", e.passPriceId],
+  const wanted: [PlanId, string, string][] = [
+    ["premium", e.priceId, "STRIPE_PRICE_ID"],
+    ["week", e.weekPriceId, "STRIPE_WEEK_PRICE_ID"],
+    ["pass", e.passPriceId, "STRIPE_PASS_PRICE_ID"],
   ];
   const out: Record<string, LivePrice> = {};
   if (!stripe) return out;
 
   await Promise.all(
-    wanted.map(async ([plan, id]) => {
+    wanted.map(async ([plan, id, envName]) => {
       if (!id) return;
       try {
         const price = await stripe.prices.retrieve(id);
+
+        /* TWO WAYS A PRICE CAN BE WRONG RATHER THAN MISSING, both of which
+           render a perfectly convincing page and then fail at Checkout.
+           Stripe prices are immutable, so changing one means creating a new
+           one and archiving the old — and an env var still pointing at the
+           archived one retrieves fine, shows the OLD number, and refuses the
+           session. Shout about it where the operator will see it. */
+        if (price.active === false) {
+          console.error(
+            `stripe price ${id} is ARCHIVED — ${envName} still points at it. ` +
+              `The page will show its old amount and checkout will fail.`,
+          );
+        }
+        const shouldRecur = RECURRING.has(plan);
+        if (shouldRecur !== Boolean(price.recurring)) {
+          console.error(
+            `stripe price ${id} (${envName}) is ${price.recurring ? "recurring" : "one-off"}, ` +
+              `but ${plan} is opened in ${shouldRecur ? "subscription" : "payment"} mode. ` +
+              `Checkout will reject this.`,
+          );
+        }
+
         const amount = amountOf(price);
         if (amount) out[plan] = { price: amount, period: periodOf(price) };
       } catch (err) {

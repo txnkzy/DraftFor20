@@ -26,15 +26,17 @@
  * dashboard is authoritative and a price rise is one edit there rather than a
  * deploy that has to be kept in step with one. See livePlanPrices().
  *
- * Each rung is a dollar, and each is cheaper per day than the one below it:
- * $2.99 a day, 57c a day for the week, 17c a day for the month. The day pass
- * was $1, which after Stripe's 30c-plus-2.9% netted 67c — a third of it gone
- * to move a dollar, which is not a price so much as a rounding error.
+ * Each rung is cheaper per day than the one below it: $2 a day, 71c a day
+ * for the week, 23c a day for the month. The day pass was $1, which after
+ * Stripe's 30c-plus-2.9% netted 67c — a third of it gone to move a dollar,
+ * which is not a price so much as a rounding error. At $2 the fee is 18% of
+ * the sale, which is still the dearest money on this page and the reason the
+ * ladder test keeps a floor under the cheapest rung.
  */
 export const PLANS = {
-  premium: { label: "Premium", price: "$5", period: "/month" },
-  week: { label: "Week Pass", price: "$3.99", period: "/week" },
-  pass: { label: "Game Night Pass", price: "$2.99", period: "for 24 hours" },
+  premium: { label: "Premium", price: "$7", period: "/month" },
+  week: { label: "Week Pass", price: "$5", period: "/week" },
+  pass: { label: "Game Night Pass", price: "$2", period: "for 24 hours" },
 } as const;
 
 export type PlanId = keyof typeof PLANS;
