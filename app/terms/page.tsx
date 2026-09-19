@@ -97,12 +97,13 @@ export default function TermsPage() {
           paying one.
         </p>
         <p>
-          There are two ways to buy it, and current prices are on the{" "}
+          There are three ways to buy it, and current prices are on the{" "}
           <Link className="text-gold" href="/pricing">pricing page</Link> rather than here, because
           they may change. A <strong className="text-ink">day pass</strong> is a one-off payment
           that adds 24 hours of access and then simply stops. It does not renew and there is
-          nothing to cancel. A <strong className="text-ink">monthly subscription</strong> renews
-          automatically each month, at the price shown when you subscribed, until you cancel it.
+          nothing to cancel. A <strong className="text-ink">weekly</strong> or{" "}
+          <strong className="text-ink">monthly subscription</strong> renews automatically at the
+          end of each period, at the price shown when you subscribed, until you cancel it.
         </p>
         <p>
           <strong className="text-ink">Cancelling.</strong> Cancel any time from the billing page

@@ -4,12 +4,23 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Padlock } from "./Padlock";
 import { accessToken } from "@/lib/auth";
-import type { PlanId } from "@/lib/premium";
+import { PLANS, PLAN_ORDER, type PlanId } from "@/lib/premium";
 
 interface BillingConfig {
   configured: boolean;
   plans: Record<PlanId, { price: string; period: string; available: boolean }>;
 }
+
+/** Prices live in PLANS and come from Stripe at runtime; this is only what
+ *  to render if the config endpoint itself cannot be reached. */
+const OFFLINE: BillingConfig = {
+  configured: false,
+  plans: {
+    premium: { ...PLANS.premium, available: false },
+    week: { ...PLANS.week, available: false },
+    pass: { ...PLANS.pass, available: false },
+  },
+};
 
 const COPY: Record<PlanId, { title: string; line: string; points: string[]; note: string }> = {
   premium: {
@@ -22,6 +33,17 @@ const COPY: Record<PlanId, { title: string; line: string; points: string[]; note
       "Card branding: your logo, your accent, your handle",
     ],
     note: "Cancel any time from your profile. Takes effect at the end of the period you have paid for.",
+  },
+  week: {
+    title: "Week Pass",
+    line: "A run of streams, not a habit.",
+    points: [
+      "The same unlocks as Premium",
+      "Renews every week until you stop it",
+      "For a tournament week or a run of recordings",
+      "A month costs less than four weeks — take Premium if you're staying",
+    ],
+    note: "Cancel any time from your profile. You keep the week you have paid for.",
   },
   pass: {
     title: "Game Night Pass",
@@ -64,15 +86,7 @@ export function PlanCards({
         const d = (await res.json()) as BillingConfig;
         if (!off) setCfg(d);
       } catch {
-        if (!off) {
-          setCfg({
-            configured: false,
-            plans: {
-              premium: { price: "$5", period: "/month", available: false },
-              pass: { price: "$1", period: "for 24 hours", available: false },
-            },
-          });
-        }
+        if (!off) setCfg(OFFLINE);
       }
     })();
     return () => { off = true; };
@@ -117,27 +131,31 @@ export function PlanCards({
   return (
     <div className="flex flex-col gap-4">
       {/*
-        SUBGRID, so the two cards line up row for row.
+        SUBGRID, so the three cards line up row for row.
         Each card is a flex column whose feature list has flex-1, which pins
         the CTA to whatever height the list happens to end at — and the note
         BELOW the button is two lines on Premium ("Cancel any time…") and one
         on the Pass, so the buttons sat 19px apart. Equalising the note with a
         min-height would be a magic number that breaks the first time the copy
         or the viewport changes.
+        Two columns is deliberately skipped. Three cards in a two-wide grid
+        strand the third one alone on its own row at half width, which reads
+        as a layout bug rather than a third option. Below lg they stack.
+
         Subgrid instead: the parent owns the six rows, every card adopts them,
         and title, price, features, button and note all align. The 1fr row is
         the feature list, so it still absorbs the slack. Without subgrid
         support this degrades to six auto rows, which looks the same as today.
       */}
-      <div className="grid gap-4 sm:grid-cols-2 sm:grid-rows-[auto_auto_auto_1fr_auto_auto]">
-        {(["premium", "pass"] as const).map((id) => {
+      <div className="grid gap-4 lg:grid-cols-3 lg:grid-rows-[auto_auto_auto_1fr_auto_auto]">
+        {PLAN_ORDER.map((id) => {
           const c = COPY[id];
           const p = cfg?.plans[id];
           const live = Boolean(cfg?.configured && p?.available);
           return (
             <section
               key={id}
-              className="flex flex-col border p-5 rule sm:row-span-6 sm:grid sm:grid-rows-subgrid"
+              className="flex flex-col border p-5 rule lg:row-span-6 lg:grid lg:grid-rows-subgrid"
             >
               <div className="flex items-baseline gap-2">
                 <h2 className="type-display text-[1.25rem]">{c.title}</h2>
@@ -149,11 +167,9 @@ export function PlanCards({
 
               <p className="mt-4 flex items-baseline gap-1.5">
                 <span className="type-num text-[2.5rem] leading-none text-gold">
-                  {p?.price ?? (id === "premium" ? "$5" : "$1")}
+                  {p?.price ?? PLANS[id].price}
                 </span>
-                <span className="type-label text-muted">
-                  {p?.period ?? (id === "premium" ? "/month" : "for 24 hours")}
-                </span>
+                <span className="type-label text-muted">{p?.period ?? PLANS[id].period}</span>
               </p>
 
               <ul className="mt-4 flex flex-1 flex-col gap-2">
@@ -197,7 +213,9 @@ export function PlanCards({
                       ? "Opening checkout"
                       : id === "premium"
                         ? "Subscribe"
-                        : "Buy 24-hour pass"}
+                        : id === "week"
+                          ? "Subscribe weekly"
+                          : "Buy 24-hour pass"}
                   </Button>
                 )}
               </div>

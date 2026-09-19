@@ -4,6 +4,7 @@ import { lookupCustomer } from "@/lib/billing/db";
 import { stripeEnv } from "@/lib/billing/stripe";
 import { allow, clientIp } from "@/lib/rateLimit";
 import { requireUser } from "@/lib/api/auth";
+import { PLANS, RECURRING, type PlanId } from "@/lib/plans";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,11 +23,11 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const status = billingStatus();
 
-  let plan = "premium";
+  let plan: PlanId = "premium";
   let returnTo = "/profile";
   try {
     const body = (await req.json()) as { plan?: string; returnTo?: string };
-    if (body.plan === "pass" || body.plan === "premium") plan = body.plan;
+    if (body.plan && body.plan in PLANS) plan = body.plan as PlanId;
     // Stripe redirects the browser to this, so it has to be a path on this
     // site and cannot be talked into being somebody else's origin
     if (typeof body.returnTo === "string" && /^\/[^/\\]/.test(body.returnTo)) {
@@ -36,7 +37,8 @@ export async function POST(req: Request) {
     /* defaults are fine */
   }
 
-  const wanted = plan === "pass" ? status.pass : status.subscription;
+  const wanted =
+    plan === "pass" ? status.pass : plan === "week" ? status.week : status.subscription;
   if (!status.configured || !wanted) {
     return NextResponse.json(
       { configured: false, message: "Payments aren't switched on yet." },
@@ -66,20 +68,28 @@ export async function POST(req: Request) {
   }
 
   const env = stripeEnv();
+  /* RECURRING decides the Stripe mode, and it is the one thing here that
+     must not be guessed. `payment` on a weekly plan charges once and grants
+     forever; `subscription` on the day pass bills somebody every 24 hours
+     until they notice. It is keyed off the same set the rest of the app
+     uses rather than a second `plan === ...` chain that can drift from it. */
+  const recurring = RECURRING.has(plan);
+  const priceId =
+    plan === "pass" ? env.passPriceId : plan === "week" ? env.weekPriceId : env.priceId;
   const origin = siteOrigin(req);
   const known = await lookupCustomer(auth.user.id);
 
   try {
     const session = await stripe.checkout.sessions.create({
-      mode: plan === "pass" ? "payment" : "subscription",
-      line_items: [{ price: plan === "pass" ? env.passPriceId : env.priceId, quantity: 1 }],
+      mode: recurring ? "subscription" : "payment",
+      line_items: [{ price: priceId, quantity: 1 }],
       // both of these carry the account id, because the webhook has to know
       // whose profile to write and an email is not an identity
       client_reference_id: auth.user.id,
       metadata: { user_id: auth.user.id, plan },
-      ...(plan === "pass"
-        ? { payment_intent_data: { metadata: { user_id: auth.user.id, plan } } }
-        : { subscription_data: { metadata: { user_id: auth.user.id, plan } } }),
+      ...(recurring
+        ? { subscription_data: { metadata: { user_id: auth.user.id, plan } } }
+        : { payment_intent_data: { metadata: { user_id: auth.user.id, plan } } }),
       ...(known.customerId
         ? { customer: known.customerId }
         : { customer_email: auth.user.email ?? undefined }),

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Padlock } from "./Padlock";
 import { accessToken } from "@/lib/auth";
-import type { PlanId } from "@/lib/premium";
+import { PLANS, type PlanId } from "@/lib/premium";
 
 interface Config {
   configured: boolean;
@@ -67,8 +67,9 @@ export function UpgradeDialog({
         if (!off) setCfg({
           configured: false,
           plans: {
-            premium: { price: "$5", period: "/month", available: false },
-            pass: { price: "$1", period: "for 24 hours", available: false },
+            premium: { ...PLANS.premium, available: false },
+            week: { ...PLANS.week, available: false },
+            pass: { ...PLANS.pass, available: false },
           },
         });
       }
@@ -168,6 +169,18 @@ export function UpgradeDialog({
                   ? "Opening checkout"
                   : `Just tonight — ${cfg.plans.pass.price} for 24 hours`}
               </Button>
+              {cfg.plans.week.available ? (
+                <Button
+                  variant="ghost"
+                  className="w-full"
+                  disabled={busy !== null}
+                  onClick={() => void checkout("week")}
+                >
+                  {busy === "week"
+                    ? "Opening checkout"
+                    : `This week — ${cfg.plans.week.price}${cfg.plans.week.period}`}
+                </Button>
+              ) : null}
               <Button
                 variant="ghost"
                 className="w-full"

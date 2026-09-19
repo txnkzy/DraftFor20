@@ -131,9 +131,13 @@ export const PREMIUM_GATES = {
   audienceVote: false,
 } as const;
 
-export const PLANS = {
-  premium: { label: "Premium", price: "$5", period: "/month" },
-  pass: { label: "Game Night Pass", price: "$1", period: "for 24 hours" },
-} as const;
+/* The price ladder lives in lib/plans.ts, which carries no "use client", so
+   the route handlers can import it too. Re-exported here because every
+   client component already reaches for it through this module. */
+export {
+  PLANS,
+  PLAN_ORDER,
+  RECURRING,
+  type PlanId,
+} from "./plans";
 
-export type PlanId = keyof typeof PLANS;

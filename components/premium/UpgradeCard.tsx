@@ -5,11 +5,12 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Padlock } from "./Padlock";
 import { accessToken, signInHref, signUpHref } from "@/lib/auth";
-import type { PlanId } from "@/lib/premium";
+import { PLANS, type PlanId } from "@/lib/premium";
 
 interface BillingConfig {
   configured: boolean;
   subscription: boolean;
+  week: boolean;
   pass: boolean;
   plans: Record<PlanId, { price: string; period: string; available: boolean }>;
 }
@@ -45,10 +46,11 @@ export function UpgradeCard({
       } catch {
         // treat an unreachable config endpoint exactly like unconfigured
         if (!off) setCfg({
-          configured: false, subscription: false, pass: false,
+          configured: false, subscription: false, week: false, pass: false,
           plans: {
-            premium: { price: "$5", period: "/month", available: false },
-            pass: { price: "$2", period: "for 24 hours", available: false },
+            premium: { ...PLANS.premium, available: false },
+            week: { ...PLANS.week, available: false },
+            pass: { ...PLANS.pass, available: false },
           },
         });
       }
@@ -155,6 +157,16 @@ export function UpgradeCard({
             onClick={() => void checkout("premium")}
           >
             {busy === "premium" ? "Opening checkout" : `Premium ${cfg.plans.premium.price}${cfg.plans.premium.period}`}
+          </Button>
+        ) : null}
+        {cfg.plans.week.available ? (
+          <Button
+            variant="ghost"
+            className="flex-1"
+            disabled={busy !== null}
+            onClick={() => void checkout("week")}
+          >
+            {busy === "week" ? "Opening checkout" : `Week ${cfg.plans.week.price}${cfg.plans.week.period}`}
           </Button>
         ) : null}
         {cfg.plans.pass.available ? (

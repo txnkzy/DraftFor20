@@ -23,6 +23,8 @@ const GIVE_UP_MS = 24_000;
 
 export function SuccessClient() {
   const q = useSearchParams();
+  /* Only the pass is a one-off. Week and month both renew, and both should
+     read "renews on", not "your 24 hours have started". */
   const plan = q.get("plan") === "pass" ? "pass" : "premium";
   const rawNext = q.get("next") ?? "/profile";
   // only ever a path on this site

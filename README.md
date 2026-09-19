@@ -371,11 +371,22 @@ Variables). They are read server-side only and must never be committed:
 | Variable | What |
 |---|---|
 | `STRIPE_SECRET_KEY` | `sk_live_…` / `sk_test_…` |
-| `STRIPE_PRICE_ID` | price id for the $5/month subscription |
+| `STRIPE_PRICE_ID` | price id for the monthly subscription |
+| `STRIPE_WEEK_PRICE_ID` | price id for the weekly subscription |
 | `STRIPE_PASS_PRICE_ID` | price id for the one-off Game Night Pass |
 | `STRIPE_WEBHOOK_SECRET` | `whsec_…` from the webhook endpoint |
 | `DF20_BILLING_SECRET` | see below |
 | `NEXT_PUBLIC_SITE_URL` | your origin, so Checkout can redirect back |
+
+**The prices on the site come from Stripe, not from this repo.** The config
+endpoint reads `unit_amount` off each Price object and renders that, memoised
+for five minutes, so raising a price is an edit in the Stripe dashboard and
+nothing else — no deploy, and no chance of the page advertising one number
+while Checkout asks for another. `PLANS` in `lib/premium.ts` is the fallback
+for an install with no Stripe keys, which is every local dev.
+
+Each plan stands on its own: a missing `STRIPE_WEEK_PRICE_ID` hides the week
+card and leaves the other two buyable.
 
 `DF20_BILLING_SECRET` is how the webhook writes to Postgres without a
 service-role key (which this app still does not use). `0019_billing.sql`

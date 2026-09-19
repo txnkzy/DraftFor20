@@ -32,7 +32,7 @@ function NotOpenYet() {
   return (
     <p className="mt-5 border border-dashed px-3 py-2.5 text-[0.875rem] leading-relaxed text-muted rule">
       <span className="type-label text-gold">not open yet</span>{" "}
-      Card payments are not switched on, so neither option can be bought at the moment. The
+      Card payments are not switched on, so nothing below can be bought at the moment. The
       prices below are final. Everything free keeps working exactly as it does now.
     </p>
   );

@@ -5,7 +5,7 @@ import { SITE_URL } from "@/lib/site";
 export const metadata: Metadata = {
   title: "Pricing — DraftFor20",
   description:
-    "Free to play, always. Premium unlocks the Content Creator board, the OBS source and your full scouting report — $5 a month, or $1 for a single game night.",
+    "Free to play, always. Premium unlocks the Content Creator board, the OBS source and your full scouting report — by the month, by the week, or a pass for a single game night.",
   alternates: { canonical: `${SITE_URL}/pricing` },
 };
 
