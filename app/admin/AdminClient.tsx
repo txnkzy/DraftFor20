@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import {
+  Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis,
+} from "recharts";
 import { Button } from "@/components/ui/Button";
 import { TextInput } from "@/components/ui/Field";
 import { Footer, Header, SetupNotice } from "@/components/site/Chrome";
@@ -71,7 +73,7 @@ interface Activity {
     /* 0053: finished is the headline, and live means active right now */
     finished_today?: number; finished_week?: number; live_idle?: number;
   };
-  daily: { day: string; rooms: number }[];
+  daily: { day: string; rooms: number; finished?: number }[];
   categories: Record<string, number>;
   modes: { standard: number; creator: number };
   duration: { sample: number; avg_seconds: number | null; median_seconds: number | null };
@@ -652,10 +654,20 @@ function Admin() {
             )}
 
             <div>
-              <h2 className="type-display text-[1rem]">Rooms created</h2>
+              <h2 className="type-display text-[1rem]">Rooms created vs finished</h2>
+              <p className="mt-1 text-[0.8125rem] leading-relaxed text-muted">
+                Bars are rooms created that day; the gold line is drafts finished that
+                day. The gap between them is the rooms nobody played — which is most of
+                them, and the reason the bars on their own were a flattering number.
+              </p>
               <div className="mt-3 h-[200px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={activity.daily}>
+                  {/* A LINE, NOT A SECOND BAR. Finished is a small fraction of
+                      created, so a grouped bar would be a sliver next to a
+                      tower and unreadable at 200px tall. A line with dots
+                      stays legible at any ratio and reads as an overlay,
+                      which is the comparison being asked for. */}
+                  <ComposedChart data={activity.daily}>
                     <CartesianGrid
                       vertical={false}
                       stroke="color-mix(in oklab, var(--color-muted) 20%, transparent)"
@@ -684,8 +696,26 @@ function Admin() {
                       }}
                       labelStyle={{ color: "var(--color-muted)" }}
                     />
-                    <Bar dataKey="rooms" fill="var(--color-ink)" radius={[2, 2, 0, 0]} />
-                  </BarChart>
+                    <Legend
+                      wrapperStyle={{ fontSize: 11, color: "var(--color-muted)" }}
+                      iconType="plainline"
+                    />
+                    <Bar
+                      dataKey="rooms"
+                      name="created"
+                      fill="var(--color-ink)"
+                      radius={[2, 2, 0, 0]}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="finished"
+                      name="finished"
+                      stroke="var(--color-gold)"
+                      strokeWidth={2}
+                      dot={{ r: 2.5, fill: "var(--color-gold)", strokeWidth: 0 }}
+                      activeDot={{ r: 4 }}
+                    />
+                  </ComposedChart>
                 </ResponsiveContainer>
               </div>
             </div>
