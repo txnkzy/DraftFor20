@@ -92,5 +92,5 @@ export function useBotTurn(
     };
   }, [isSolo, botOnClock, phase, turnKey, code, onActed]);
 
-  return { thinking, lastMove, botName: bot?.display_name ?? "The House" };
+  return { thinking, lastMove, botName: bot?.display_name ?? "DraftFor20Bot" };
 }

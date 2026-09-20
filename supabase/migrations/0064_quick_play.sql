@@ -258,9 +258,11 @@ begin
   select * into v_room from public.rooms where id = (v_made->>'room_id')::uuid;
   update public.rooms set is_solo = true where id = v_room.id;
 
-  -- the opponent. Named, not "Bot", because the results card and the vote
-  -- screen both print it and "Bot" reads like a placeholder.
-  v_name := 'The House';
+  -- The opponent's name is printed on the board, the bid history, the vote
+  -- screen and the results card. It ends in 'Bot' deliberately: on a card
+  -- somebody posts, the person looking at it should be able to tell that the
+  -- loser was software. 'The House' read as a casino, and worse, as a person.
+  v_name := 'DraftFor20Bot';
   insert into public.players (room_id, seat, display_name, bankroll_cents,
                               is_host, is_bot, gives_used)
   values (v_room.id, 2, v_name, v_room.starting_bankroll_cents, false, true, 0)

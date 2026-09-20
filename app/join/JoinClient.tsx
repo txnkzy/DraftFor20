@@ -103,7 +103,7 @@ function Join() {
         <p className="mt-2 text-[0.875rem] text-muted">
           Nobody to play with?{" "}
           <a href="/quick-play" className="text-ink underline">
-            Draft against The House
+            Draft against DraftFor20Bot
           </a>
           .
         </p>

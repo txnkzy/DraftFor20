@@ -346,7 +346,7 @@ function NewRoom() {
         <p className="mt-2 text-[0.875rem] text-muted">
           On your own?{" "}
           <a href="/quick-play" className="text-ink underline">
-            Draft against The House
+            Draft against DraftFor20Bot
           </a>{" "}
           instead — no code, no waiting.
         </p>

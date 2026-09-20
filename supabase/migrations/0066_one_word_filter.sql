@@ -178,7 +178,7 @@ begin
     'peacock','bassist','cocktail','shiitake','Essex','Sussex','grape',
     'scrape','spoon','harpoon','button','butter','accumulate','circumstance',
     'Uranus','mongoose','despicable','scatter','proof','Wang','Mason','Logan',
-    'ok_name1','The House'
+    'ok_name1','DraftFor20Bot'
   ] loop
     if public.df20_has_bad_word(w) then
       v_bad := v_bad || ('ordinary name wrongly blocked: ' || w); end if;

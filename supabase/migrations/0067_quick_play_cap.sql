@@ -30,6 +30,10 @@
 -- raises after it are arithmetic the heuristic does for free. ~25 calls a
 -- draft becomes ~10.
 --
+-- Also renames the opponent to DraftFor20Bot. Existing rooms keep 'The
+-- House': renaming a player inside a finished draft would rewrite a results
+-- card somebody may already have posted.
+--
 -- Re-runnable.
 -- ═══════════════════════════════════════════════════════════════════════════
 

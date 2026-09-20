@@ -96,7 +96,7 @@ export default function Home() {
             </Link>
           </div>
           <p className="mt-3 text-[0.8125rem] text-muted">
-            No signup. Bring someone, or draft against The House on your own.
+            No signup. Bring someone, or draft against DraftFor20Bot on your own.
           </p>
         </section>
 

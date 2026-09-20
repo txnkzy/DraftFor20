@@ -118,7 +118,7 @@ function QuickPlay() {
       <main className="mx-auto w-full max-w-sm px-4 py-12">
         <h1 className="type-display text-[1.75rem]">Quick Play</h1>
         <p className="mt-2 text-[0.9375rem] leading-relaxed text-muted">
-          One draft against The House. No second player, no waiting, no
+          One draft against DraftFor20Bot. No second player, no waiting, no
           account — about ten minutes.
         </p>
 
@@ -217,7 +217,7 @@ function QuickPlay() {
             }
             onClick={() => void go()}
           >
-            {busy ? "Dealing…" : "Play The House"}
+            {busy ? "Dealing…" : "Play DraftFor20Bot"}
           </Button>
         </div>
       </main>
