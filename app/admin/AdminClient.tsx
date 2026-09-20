@@ -27,7 +27,7 @@ import { supabaseBrowser, supabaseConfigured } from "@/lib/supabase/client";
  * row — so on a fresh database every RPC behind this page refuses everyone
  * and there is no role system to misconfigure.
  */
-type Tab = "users" | "library" | "activity" | "events" | "signals" | "changelog";
+type Tab = "users" | "library" | "stats" | "events" | "signals" | "changelog";
 
 interface Row {
   id: string;
@@ -80,6 +80,12 @@ interface Activity {
   library: { public: number; pending: number; saved_decks: number };
   audience: { votes: number; rooms_voted_on: number };
   premium: { active: number; by_source: Record<string, number> };
+  /* added later, so optional — the page still renders against a database
+     that has not had the growth-metrics migration applied */
+  second_player?: { sample: number; median_seconds: number | null; p90_seconds: number | null };
+  hosts?: { total: number; repeat: number; finished_one: number; most_by_one: number };
+  onboarding?: { accounts: number; ever_hosted: number; median_hours_to_first: number | null };
+  by_category?: { name: string; drafts: number; finished: number; rate: number | null }[];
 }
 
 interface EventRow {
@@ -282,7 +288,7 @@ function Admin() {
             [
               ["users", `Users ${rows.length}`],
               ["library", `Library ${queue.length > 0 ? `· ${queue.length} queued` : ""}`],
-              ["activity", "Activity"],
+              ["stats", "Statistics"],
               ["events", "Events"],
               ["signals", "Signals"],
               ["changelog", "Changelog"],
@@ -596,14 +602,14 @@ function Admin() {
           </section>
         ) : null}
 
-        {tab === "activity" && !activity ? (
+        {tab === "stats" && !activity ? (
           <p className="mt-6 text-[0.875rem] text-muted">
             No activity figures came back. Reload, and if it keeps happening the{" "}
             <code>admin_activity</code> function is the place to look.
           </p>
         ) : null}
 
-        {tab === "activity" && activity ? (
+        {tab === "stats" && activity ? (
           <section className="mt-6 flex flex-col gap-8">
             <dl className="grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-4">
               {/* Finished drafts are the headline. Creating a room is free
@@ -652,6 +658,102 @@ function Admin() {
                 to break them down by how far each one actually got.
               </p>
             )}
+
+            {/* ── numbers that can go DOWN ──────────────────────────────
+                Everything above counts things that only accumulate, which
+                feels like progress and informs nothing. These four move in
+                both directions and each one changes a decision. */}
+            {activity.hosts ? (
+              <div>
+                <p className="type-label text-muted">does anybody come back</p>
+                <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-4">
+                  <Stat label="accounts that hosted" value={activity.hosts.total} />
+                  <Stat label="hosted more than once" value={activity.hosts.repeat} />
+                  <Stat label="finished at least one" value={activity.hosts.finished_one} />
+                  <Stat label="most by one account" value={activity.hosts.most_by_one} />
+                </dl>
+                {activity.onboarding ? (
+                  <p className="mt-2 text-[0.8125rem] leading-relaxed text-muted">
+                    {activity.onboarding.ever_hosted} of {activity.onboarding.accounts} accounts
+                    have ever hosted a draft
+                    {activity.onboarding.median_hours_to_first !== null
+                      ? `, and those who did started within ${activity.onboarding.median_hours_to_first} hours of signing up (median)`
+                      : ""}
+                    . An account that never hosts anything is an onboarding problem, not a
+                    quiet user.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {activity.second_player ? (
+              <div>
+                <p className="type-label text-muted">how long the second player takes</p>
+                {activity.second_player.sample === 0 ? (
+                  <p className="mt-2 text-[0.8125rem] leading-relaxed text-muted">
+                    No room in the last 90 days has had a second player join, so there is
+                    nothing to measure yet.
+                  </p>
+                ) : (
+                  <>
+                    <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-4">
+                      <Stat
+                        label="median wait"
+                        value={Math.round(activity.second_player.median_seconds ?? 0)}
+                      />
+                      <Stat
+                        label="slowest 10% wait"
+                        value={Math.round(activity.second_player.p90_seconds ?? 0)}
+                      />
+                      <Stat label="rooms measured" value={activity.second_player.sample} />
+                    </dl>
+                    <p className="mt-2 text-[0.8125rem] leading-relaxed text-muted">
+                      Seconds, from the room being created to the other player arriving.
+                      {(activity.second_player.median_seconds ?? 0) < 60
+                        ? " Under a minute means people are playing side by side — the rooms that never fill are idle curiosity, not lost friends."
+                        : " Minutes rather than seconds means people are sharing a code and losing each other in the gap, which is what asynchronous play would fix."}
+                    </p>
+                  </>
+                )}
+              </div>
+            ) : null}
+
+            {activity.by_category && activity.by_category.length > 0 ? (
+              <div>
+                <p className="type-label text-muted">which categories get played out</p>
+                <ul className="mt-2 flex flex-col">
+                  {activity.by_category.map((c) => (
+                    <li
+                      key={c.name}
+                      className="flex items-baseline gap-3 border-b py-2 rule"
+                    >
+                      <span className="min-w-0 flex-1 truncate text-[0.875rem]">{c.name}</span>
+                      <span className="type-num shrink-0 text-[0.8125rem] text-muted">
+                        {c.finished}/{c.drafts}
+                      </span>
+                      <span
+                        className="type-num w-12 shrink-0 text-right text-[0.8125rem]"
+                        style={{
+                          color:
+                            (c.rate ?? 0) >= 50
+                              ? "var(--color-teal)"
+                              : (c.rate ?? 0) > 0
+                                ? "var(--color-gold)"
+                                : "var(--color-coral)",
+                        }}
+                      >
+                        {c.rate === null ? "—" : `${c.rate}%`}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-[0.8125rem] leading-relaxed text-muted">
+                  Finished over drafted, last 90 days. Drafted often and finished rarely is a
+                  bad deck — too shallow, too obscure, or the wrong recognition level. This is
+                  the cut list.
+                </p>
+              </div>
+            ) : null}
 
             <div>
               <h2 className="type-display text-[1rem]">Rooms created vs finished</h2>
