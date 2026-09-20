@@ -11,6 +11,13 @@
  * Keep the two in step. If you add a rule here, add it to
  * df20_handle_problem, and vice versa — the parity test in username.test.ts
  * checks the reserved list and the shape rules against this same table.
+ *
+ * ONE RULE IS DELIBERATELY NOT MIRRORED: the explicit-word filter. Its list
+ * lives in a table so an operator can extend it with an INSERT instead of a
+ * deploy, and shipping a copy of it to every browser would both leak the
+ * list and guarantee the two drift. usernameCode() therefore returns null
+ * for a name the server will still refuse as "explicit" — which is fine,
+ * because the form only enables submit once handle_available has answered.
  */
 
 export const USERNAME_MIN = 3;
@@ -29,7 +36,8 @@ export const RESERVED = [
 ] as const;
 
 export type UsernameProblem =
-  | "required" | "too_short" | "too_long" | "charset" | "edge" | "reserved" | "taken";
+  | "required" | "too_short" | "too_long" | "charset" | "edge" | "reserved"
+  | "taken" | "explicit";
 
 /** The reason codes the database raises, as sentences a person can act on. */
 export const USERNAME_SAYS: Record<UsernameProblem, string> = {
@@ -40,6 +48,9 @@ export const USERNAME_SAYS: Record<UsernameProblem, string> = {
   edge: "Can't start or end with an underscore, or use two in a row.",
   reserved: "That one's reserved.",
   taken: "Taken — try another.",
+  /* Its own message because "Taken" was a lie AND useless: the name is free,
+     and the person is told to guess again with no idea what was wrong. */
+  explicit: "Let's keep it clean — try another.",
 };
 
 /** null when the name is well formed. Says nothing about whether it is FREE:

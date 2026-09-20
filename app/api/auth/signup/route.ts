@@ -75,6 +75,25 @@ export async function POST(req: Request) {
   }
   const sb = createClient(url, anon, { auth: { persistSession: false } });
 
+  /* The shape check above cannot see the explicit-word list — it lives in a
+     table, server side. Ask the database, so a request that skipped the form
+     gets the real reason instead of silently ending up with a generated
+     name. A failure here is not a reason to refuse a signup: the trigger
+     checks again and falls back on its own. */
+  const { data: avail } = await sb.rpc("handle_available", { p_handle: handle });
+  const verdict = avail as { available?: boolean; problem?: string } | null;
+  if (verdict && verdict.available === false) {
+    const known: Record<string, string> = {
+      taken: "Taken — try another.",
+      explicit: "Let's keep it clean — try another.",
+      reserved: "That one's reserved.",
+    };
+    return NextResponse.json(
+      { ok: false, message: known[verdict.problem ?? ""] ?? "Pick a different username." },
+      { status: 400 },
+    );
+  }
+
   const origin = req.headers.get("origin") ?? "";
   const { data, error } = await sb.auth.signUp({
     email,
