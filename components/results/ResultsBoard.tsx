@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { LibraryOptIn } from "./LibraryOptIn";
 import { ExportPanel } from "./ExportPanel";
 import { VoteLink } from "./VoteLink";
@@ -9,6 +10,9 @@ import { buildCardModel } from "@/lib/results/cardModel";
 import { formatCents } from "@/lib/money";
 import { seatAccent } from "@/lib/game/view";
 import { useAudienceTally, type AudienceTally } from "@/lib/game/useAudienceTally";
+import { Button } from "@/components/ui/Button";
+import { readableError } from "@/lib/game/errors";
+import { saveSeat } from "@/lib/game/session";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import type { RoomState } from "@/lib/game/types";
 
@@ -340,11 +344,107 @@ export function ResultsBoard({
         hostProfileId={state.room.host_profile_id}
       />
 
+      <Rematch
+        code={card.code}
+        sessionToken={sessionToken}
+        rematchCode={state.room.rematch_code ?? null}
+      />
+    </div>
+  );
+}
+
+/**
+ * "Run it back" used to be a link to /new. It carried nothing — not the
+ * category, not the bankroll, not the roster size, and not the person you
+ * had just played — so a rematch meant re-picking every setting and sending
+ * a fresh code to somebody already sitting there.
+ *
+ * Now the first person to press it creates the room with both seats already
+ * filled, and the other one sees it appear and joins. Neither is ever handed
+ * the other's session token: each proves their old seat and collects only
+ * their own. A spectator sees the invitation and cannot take a seat, which
+ * is correct — they were never in the draft.
+ */
+function Rematch({
+  code,
+  sessionToken,
+  rematchCode,
+}: {
+  code: string;
+  sessionToken: string | null;
+  rematchCode: string | null;
+}) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function go(fn: "create_rematch" | "claim_rematch") {
+    if (!sessionToken) return;
+    setBusy(true);
+    setError(null);
+    const { data, error: e } = await supabaseBrowser().rpc(fn, {
+      p_code: code,
+      p_token: sessionToken,
+    });
+    setBusy(false);
+    if (e) {
+      setError(readableError(e.message));
+      return;
+    }
+    const d = data as {
+      code: string;
+      token: string;
+      seat: number;
+      room_id: string;
+      player_id: string;
+    } | null;
+    if (!d) return;
+    /* Save the seat BEFORE navigating, or the new room loads with no
+       identity and offers to seat you in a room you are already in. The
+       session store filters on playerId, so a seat saved without one is
+       silently discarded — which looks exactly like the rematch failing. */
+    saveSeat({
+      roomId: d.room_id,
+      code: d.code,
+      playerId: d.player_id,
+      sessionToken: d.token,
+      seat: d.seat,
+    });
+    router.push(`/room/${d.code}`);
+  }
+
+  if (!sessionToken) {
+    return (
       <div className="flex flex-wrap items-center gap-2">
         <Link href="/new" className="btn btn-ghost h-11 px-4 text-[0.8125rem]">
-          Run it back
+          Start your own
         </Link>
       </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {rematchCode ? (
+          <Button variant="primary" size="lg" disabled={busy} onClick={() => void go("claim_rematch")}>
+            {busy ? "Joining" : "Join the rematch"}
+          </Button>
+        ) : (
+          <Button variant="ghost" size="lg" disabled={busy} onClick={() => void go("create_rematch")}>
+            {busy ? "Setting it up" : "Run it back"}
+          </Button>
+        )}
+        <Link href="/new" className="btn btn-ghost h-11 px-4 text-[0.8125rem]">
+          Different settings
+        </Link>
+      </div>
+      <p className="text-[0.8125rem] leading-snug text-muted">
+        {rematchCode
+          ? "Your opponent has already set one up — same settings, same category, freshly shuffled."
+          : "Same settings, same category, dealt again. No code to send: they are seated already."}
+      </p>
+      {error ? <p className="text-[0.8125rem] text-coral">{error}</p> : null}
     </div>
   );
 }

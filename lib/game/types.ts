@@ -40,6 +40,8 @@ export interface Room {
   /** set only when somebody left mid-draft; see leave_room in 0026 */
   abandoned_by: string | null;
   abandoned_at: string | null;
+  /** set when a rematch has been started from this room */
+  rematch_code: string | null;
 }
 
 export interface Player {
