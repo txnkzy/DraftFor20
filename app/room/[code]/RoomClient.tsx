@@ -25,7 +25,7 @@ import { givesAreUnlimited } from "@/lib/game/rules";
 import { useCountdown, useRoom } from "@/lib/game/useRoom";
 import { buildBoardView, seatAccent } from "@/lib/game/view";
 import { formatCents } from "@/lib/money";
-import { armAudio, cueLock, cueRaise, setMuted, useAudioReady, useMuted } from "@/lib/sound";
+import { armAudio, cueLock, cueRaise, cueTick, setMuted, useAudioReady, useMuted } from "@/lib/sound";
 import { usePremium } from "@/lib/premium";
 import { supabaseBrowser, supabaseConfigured } from "@/lib/supabase/client";
 
@@ -159,6 +159,22 @@ function RoomLive({ code }: { code: string }) {
     }
     track("draft_completed");
   }, [complete, roomId]);
+
+  /* THE LAST THREE SECONDS, out loud. Fires on the SECOND changing rather
+     than on every countdown frame — the countdown repaints at ~15fps, so
+     anything keyed on the raw value would machine-gun. The ref resets
+     whenever the window stops being critical, so the next lot ticks again. */
+  const secondsLeft = cd.seconds;
+  const tickedAt = useRef<number | null>(null);
+  useEffect(() => {
+    if (!cd.critical || secondsLeft === null) {
+      tickedAt.current = null;
+      return;
+    }
+    if (tickedAt.current === secondsLeft) return;
+    tickedAt.current = secondsLeft;
+    cueTick(secondsLeft);
+  }, [cd.critical, secondsLeft]);
 
   const muted = useMuted();
   const audioReady = useAudioReady();

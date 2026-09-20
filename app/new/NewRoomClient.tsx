@@ -110,6 +110,8 @@ function NewRoom() {
   const [setupLink, setSetupLink] = useState<string | null>(null);
   /* phone-only disclosures; both are no-ops at sm: and above */
   const [shelfOpen, setShelfOpen] = useState(false);
+  /** one typed-category room per free account; null until we have asked */
+  const [freeLookup, setFreeLookup] = useState<boolean | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const { user } = useHost();
@@ -130,6 +132,9 @@ function NewRoom() {
         .select("id,name,default_roster_size,default_bankroll_cents,default_min_bid_cents,default_timer_seconds,default_gives_per_player")
         .order("created_at", { ascending: false });
       setSaved((rows as Saved[]) ?? []);
+      const { data: fl } = await sb.rpc("my_free_lookup");
+      const flo = fl as { signed_in?: boolean; used?: boolean } | null;
+      setFreeLookup(Boolean(flo?.signed_in) && !flo?.used);
       const { data: myDecks } = await sb.rpc("my_decks");
       const list = (myDecks as { id: string; name: string; item_count: number }[]) ?? [];
       setDecks(list);
@@ -344,9 +349,20 @@ function NewRoom() {
               it. Only drawn for people who do not already have premium. */}
           {!premiumActive ? (
             <p className="text-[0.8125rem] leading-snug text-muted">
-              One is free. The other three need premium —{" "}
-              <span className="text-gold">$1 for a day</span> or{" "}
-              <span className="text-gold">$5 a month</span>.{" "}
+              {freeLookup === true ? (
+                <>
+                  The shelf is free, and so is your{" "}
+                  <span className="text-teal">first typed category</span>. After that
+                  it is <span className="text-gold">$1 for a day</span> or{" "}
+                  <span className="text-gold">$5 a month</span>.{" "}
+                </>
+              ) : (
+                <>
+                  One is free. The other three need premium —{" "}
+                  <span className="text-gold">$1 for a day</span> or{" "}
+                  <span className="text-gold">$5 a month</span>.{" "}
+                </>
+              )}
               <Link href="/pricing" className="text-ink underline">
                 What you get
               </Link>
@@ -363,8 +379,12 @@ function NewRoom() {
             <button
               key={m}
               onClick={() => {
+                /* "auto" is free exactly once per account — the server counts
+                   rooms already built that way, so this only decides whether
+                   to show the dialog, never whether the room is allowed. */
+                const onTheHouse = m === "auto" && freeLookup === true;
                 // free is the shelf; the other three are premium and say so
-                if (m !== "free" && !premium.active) {
+                if (m !== "free" && !premium.active && !onTheHouse) {
                   upgrade.ask(
                     m === "auto"
                       ? "Type your own category"
@@ -389,7 +409,7 @@ function NewRoom() {
                    teaching the whole time, rather than inventing a new one.
                    The muted grey these used to wear is the palette's quietest
                    colour: the lock was there and nobody could see it. */
-                premium_ && !premiumActive
+                premium_ && !premiumActive && !(m === "auto" && freeLookup === true)
                   ? { borderLeftColor: "var(--color-gold)", borderLeftWidth: 3 }
                   : undefined
               }
@@ -397,9 +417,13 @@ function NewRoom() {
               <span className="flex items-baseline gap-2">
                 <span className={`type-label ${mode === m ? "text-coral" : "text-ink"}`}>{label}</span>
                 {premium_ && !premiumActive ? (
-                  <span className="type-label flex items-center gap-1 text-gold">
-                    <Padlock size={12} /> premium
-                  </span>
+                  m === "auto" && freeLookup === true ? (
+                    <span className="type-label text-teal">first one free</span>
+                  ) : (
+                    <span className="type-label flex items-center gap-1 text-gold">
+                      <Padlock size={12} /> premium
+                    </span>
+                  )
                 ) : null}
               </span>
               <span className="mt-1 block text-[0.8125rem] leading-snug text-muted">{blurb}</span>

@@ -46,10 +46,21 @@ export function PlayerStrip({
         {isYou ? <span className="type-label text-muted">you</span> : null}
         {isHigh ? <span className="type-label text-coral">high</span> : null}
         {p.isBroke ? <span className="type-label text-coral">broke</span> : null}
-        {givesLeft !== null && givesLeft > 0 ? (
-          <span className="type-label text-teal">
-            {givesUnlimited ? "\u221E gives" : `${givesLeft} give${givesLeft === 1 ? "" : "s"}`}
-          </span>
+        {/* ZERO IS THE INTERESTING NUMBER. This used to render only while
+            gives remained, so the moment a player ran out the indicator
+            vanished — and "they cannot dump anything on me any more" is
+            exactly the fact the other player wants to bid against. An absent
+            badge and a spent one looked identical. */}
+        {givesLeft !== null ? (
+          givesUnlimited ? (
+            <span className="type-label text-teal">&#8734; gives</span>
+          ) : givesLeft > 0 ? (
+            <span className="type-label text-teal">
+              {givesLeft} give{givesLeft === 1 ? "" : "s"}
+            </span>
+          ) : (
+            <span className="type-label text-muted">no gives</span>
+          )
         ) : null}
 
         <span className="type-num ml-auto shrink-0 text-[0.6875rem] text-muted">

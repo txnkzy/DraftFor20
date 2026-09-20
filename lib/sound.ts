@@ -150,3 +150,19 @@ export const cueRaise = () => tone(660, 120, 0.05);
 export const cueLock = () => tone(392, 220, 0.045);
 /** a fresh card hit the block */
 export const cueDeal = () => tone(523, 90, 0.03);
+
+/**
+ * The last three seconds, once per second, climbing.
+ *
+ * The clock was already the loudest thing on the board and the quietest
+ * thing in the room: `critical` has driven a visual pulse since the timer
+ * shipped, but a player looking at their opponent rather than the screen got
+ * nothing. Three rising ticks put the deadline somewhere other than the eyes.
+ *
+ * Short and quiet on purpose — 70ms at a lower gain than a raise, because
+ * this fires three times in a row and a cue that repeats has to be smaller
+ * than one that does not. Goes through tone(), so the mute button and the
+ * locked-audio path govern it like every other cue.
+ */
+export const cueTick = (secondsLeft: number) =>
+  tone(secondsLeft <= 1 ? 1046 : secondsLeft === 2 ? 880 : 784, 70, 0.035);
