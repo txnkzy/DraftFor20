@@ -171,7 +171,7 @@ export function UpgradeDialog({
               </Button>
               {cfg.plans.week.available ? (
                 <Button
-                  variant="ghost"
+                  variant="primary"
                   className="w-full"
                   disabled={busy !== null}
                   onClick={() => void checkout("week")}
@@ -182,7 +182,7 @@ export function UpgradeDialog({
                 </Button>
               ) : null}
               <Button
-                variant="ghost"
+                variant="primary"
                 className="w-full"
                 disabled={busy !== null}
                 onClick={() => void checkout("premium")}

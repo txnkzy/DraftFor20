@@ -161,7 +161,7 @@ export function UpgradeCard({
         ) : null}
         {cfg.plans.week.available ? (
           <Button
-            variant="ghost"
+            variant="primary"
             className="flex-1"
             disabled={busy !== null}
             onClick={() => void checkout("week")}
@@ -171,7 +171,7 @@ export function UpgradeCard({
         ) : null}
         {cfg.plans.pass.available ? (
           <Button
-            variant="ghost"
+            variant="primary"
             className="flex-1"
             disabled={busy !== null}
             onClick={() => void checkout("pass")}

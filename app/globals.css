@@ -105,7 +105,19 @@
     transition: border-color 120ms linear, background-color 120ms linear, color 120ms linear;
     -webkit-tap-highlight-color: transparent;
   }
+  /* A <button> defaults to the arrow cursor, which reads as "not clickable"
+     to anyone who learned the web from links. Every control here is a real
+     action, so every one of them gets the hand. */
+  .btn:not(:disabled) { cursor: pointer; }
   .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  /* The bare-text buttons too — the sound toggle, the room code, the tap-to-
+     type bid amount. They are buttons without the .btn box, and they were the
+     ones most likely to be mistaken for plain text. */
+  button:not(:disabled), [role="button"]:not([aria-disabled="true"]),
+  summary, label:has(> input[type="checkbox"]), label:has(> input[type="radio"]) {
+    cursor: pointer;
+  }
 
   /* Pressed. Hover is a desktop-only affordance and this is a timed game
      played on phones — without this, a tap gives no feedback at all until

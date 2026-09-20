@@ -197,14 +197,19 @@ export function PlanCards({
                     </span>
                   </div>
                 ) : !signedIn ? (
-                  <a href="/signup" className="btn btn-ghost h-11 w-full px-4 text-[0.8125rem]">
+                  <a href="/signup" className="btn btn-primary h-11 w-full px-4 text-[0.8125rem]">
                     Make an account first
                   </a>
                 ) : !verified ? (
                   <p className="type-label text-muted">confirm your email first</p>
                 ) : (
                   <Button
-                    variant={id === "premium" ? "primary" : "ghost"}
+                    /* EVERY PLAN BUTTON IS THE SAME BUTTON. Premium used to be
+                       the only filled one, which read as "this is the real
+                       option and the other two are footnotes". The cards
+                       already say which plan most people want in words; the
+                       button does not need to argue it a second time. */
+                    variant="primary"
                     className="w-full"
                     disabled={busy !== null}
                     onClick={() => void checkout(id)}
