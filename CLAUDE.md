@@ -437,6 +437,35 @@ Rebuild it after editing any migration:
 ./supabase/build-bundle.sh
 ```
 
+### Applying migrations — `npm run db:push`
+
+No more pasting into the SQL editor. A ledger table,
+`df20_schema_migrations`, records what has run, so the scripts can tell
+pending from applied:
+
+```bash
+npm run db:status      # what is applied, what is pending, what changed since
+npm run db:baseline    # ONE TIME: record current files as applied, running none
+npm run db:push        # run the pending ones, oldest first, then reload PostgREST
+```
+
+**`db:baseline` first, once, on a database you believe is up to date.** Without
+it the ledger is empty and everything looks pending — and a full replay does
+not work here, because 0046 asserts Jujutsu Kaisen has 30 items and it has 28.
+Baseline writes the filenames in without executing them.
+
+`db:push` stops at the first failure and applies nothing after it. It does not
+wrap each file in a transaction, deliberately: these were written for the
+Supabase SQL editor, which runs statements one at a time and does not roll
+back, so they are built to be re-runnable from a partial state and the two
+paths behave identically.
+
+`SUPABASE_DB_URL` is the credential — dashboard → Project Settings → Database
+→ Connection string → URI, with the password substituted. Put it in
+`.env.local`, which is gitignored. Nothing in the repo stores or prints it.
+The no-direct-Postgres rule above is about the APPLICATION; this is an
+operator script run by hand with a credential the app never sees.
+
 ### Migration numbering — two people, one sequence
 
 Numbers are picked by hand, so two people working at once WILL collide, and
@@ -458,6 +487,26 @@ where nothing decides which definition wins. Redefining a function in a
 only cares what SQL runs, never what the file was called. Once it is applied
 anywhere, leave the name alone and add the number to `HISTORICAL` in the
 script instead.
+
+**New migrations are timestamped, not numbered:**
+
+```bash
+npm run new:migration -- add_widget_table
+# → supabase/migrations/20260920034912_add_widget_table.sql
+```
+
+A UTC timestamp cannot collide unless two people create a file in the same
+second, which removes the class of problem rather than policing it. Fourteen
+digits sort after four as plain strings, so new work always runs last.
+Existing files keep their numbers — renaming a migration somebody has already
+applied buys nothing and risks it running twice.
+
+**ORDER ENCODES DEPENDENCY, NOT AUTHORSHIP.** Do not partition the sequence by
+who wrote it. `0041_allow_broke` and `0055_force_or_take` both redefine
+`offer_decide()` and `expire_turn()`, and 0055 is deliberately built on 0041 —
+its own header calls itself "the half of 0041 that was never built". Moving
+either past the other silently reverts the loser, with no error. Verified:
+apply 0055 then 0041 and `offer_decide` stops calling `df20_force_lot`.
 
 `0017`–`0020` are the v6 additions: profiles and premium, saved decks, the OBS
 and audience-vote surface, billing writes and the admin grant. `0021`–`0025`

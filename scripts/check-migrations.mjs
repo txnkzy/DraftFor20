@@ -34,11 +34,16 @@ const err = (m) => {
 const note = (m) => console.log(`  note   ${m}`);
 
 /* ── 1. two migrations claiming one number ─────────────────────────────── */
+/* Two shapes are valid. `0062_name.sql` is the historical sequence, still
+   the majority. `20260919T2340..._name.sql` is a UTC timestamp, which is what
+   new work uses — see scripts/new-migration.mjs — because a hand-picked
+   number is the thing that collides. Both sort correctly as strings: a 14
+   digit timestamp is always greater than a 4 digit sequence number. */
 const byNumber = new Map();
 for (const f of files) {
-  const n = (f.match(/^(\d+)/) || [])[1];
+  const n = (f.match(/^(\d{4,})/) || [])[1];
   if (!n) {
-    note(`${f} has no leading number`);
+    err(`${f} starts with neither a sequence number nor a timestamp`);
     continue;
   }
   byNumber.set(n, [...(byNumber.get(n) ?? []), f]);
