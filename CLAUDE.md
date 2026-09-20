@@ -466,6 +466,20 @@ paths behave identically.
 The no-direct-Postgres rule above is about the APPLICATION; this is an
 operator script run by hand with a credential the app never sees.
 
+### CI
+
+`.github/workflows/checks.yml` runs on every push to main and every PR:
+migration numbering, lint, and the same `npm run build` Vercel runs. Two
+people work on this repo and neither can be expected to remember a pre-push
+ritual — and the collisions that prompted this were invisible to git, because
+two files claiming 0057 merge perfectly cleanly.
+
+Numbering and build are hard gates. **Lint is reported but does not fail the
+run**, because two setState-in-effect errors in `CardImage.tsx` and
+`app/dev/cards` predate the workflow, and a check that is red the day it
+lands is one everybody learns to scroll past. Fix those two and make it a
+gate.
+
 ### Migration numbering — two people, one sequence
 
 Numbers are picked by hand, so two people working at once WILL collide, and

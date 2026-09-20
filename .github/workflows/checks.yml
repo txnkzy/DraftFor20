@@ -1,0 +1,48 @@
+name: checks
+
+# Two people work on this repo and neither of them can be expected to
+# remember a pre-push ritual. The migration collisions that prompted this
+# were invisible to git — two files claiming 0057 merge perfectly cleanly —
+# so the only place to catch them is somewhere that runs on its own.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The cheap one first: it needs no build and it is the failure that
+      # cost the most time, because nothing else in the toolchain notices it.
+      - name: migration numbering
+        run: npm run check:migrations
+
+      # Reported, not enforced. Two setState-in-effect errors predate this
+      # workflow (CardImage.tsx, dev/cards) and a check that is red on the day
+      # it lands is a check everyone learns to scroll past. Fix those two and
+      # this can become a hard gate.
+      - name: lint
+        run: npm run lint
+        continue-on-error: true
+
+      # Catches type errors that lint does not, and is the same command
+      # Vercel runs — so a red build here means a red deploy there.
+      - name: build
+        run: npm run build
+        env:
+          # Build-time only. NEXT_PUBLIC_* is inlined at build, and the real
+          # values are set in Vercel; these exist so the build can complete
+          # without secrets. Nothing here reaches a browser or a database.
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key-for-build-only
+          NEXT_PUBLIC_SITE_URL: https://www.draftfor20.com
