@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { usernameProblem } from "@/lib/username";
 import { NextResponse } from "next/server";
 import { allow, clientIp } from "@/lib/rateLimit";
 import { verifyTurnstile } from "@/lib/turnstile";
@@ -24,12 +25,14 @@ export async function POST(req: Request) {
 
   let email = "";
   let password = "";
+  let handle = "";
   let next = "/";
   let token: string | null = null;
   try {
     const body = (await req.json()) as Record<string, unknown>;
     email = typeof body.email === "string" ? body.email.trim() : "";
     password = typeof body.password === "string" ? body.password : "";
+    handle = typeof body.handle === "string" ? body.handle.trim().toLowerCase() : "";
     if (typeof body.next === "string" && /^\/[^/\\]/.test(body.next)) next = body.next;
     token = typeof body.turnstileToken === "string" ? body.turnstileToken : null;
   } catch {
@@ -37,6 +40,19 @@ export async function POST(req: Request) {
   }
   if (!email || !password) {
     return NextResponse.json({ ok: false, message: "Email and password are required." }, { status: 400 });
+  }
+
+  /* A username is required at signup as of 0057, so the leaderboard has a
+     name to print. The SHAPE is checked here so an obviously bad one never
+     reaches Supabase; uniqueness is not, because it cannot be held: the
+     account does not exist yet, and reserving a name for a signup that may
+     never be confirmed would let anyone squat the whole namespace. The
+     trigger claims it if it is still free when the row lands, and falls back
+     to a generated name if it is not — which leaves handle_chosen false, and
+     that is what makes the profile page ask again. */
+  const handleProblem = usernameProblem(handle);
+  if (handleProblem) {
+    return NextResponse.json({ ok: false, message: handleProblem }, { status: 400 });
   }
 
   // a scripted signup flood should not even reach Cloudflare, let alone Supabase
@@ -65,6 +81,10 @@ export async function POST(req: Request) {
     password,
     options: {
       emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(next)}`,
+      // read by df20_on_auth_user_created; Supabase creates the auth user
+      // before this app ever holds a session, so it is the only way to carry
+      // the chosen name in
+      data: { handle },
     },
   });
 

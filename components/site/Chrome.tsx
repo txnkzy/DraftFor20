@@ -27,7 +27,7 @@ export function Header({ thin = false }: { thin?: boolean }) {
         <Link href="/" className="type-display shrink-0 text-[0.9375rem] tracking-tight">
           Draft<span className="text-gold">For20</span>
         </Link>
-        {/* Four jobs, four items: join a game, see the price, your account,
+        {/* Join a game, see who is winning, see the price, your account,
             start a game. /20-dollar-draft is deliberately NOT here — it is a
             search landing page whose own call to action is "start a room",
             which is the button immediately beside it. It stays in the footer,
@@ -35,6 +35,12 @@ export function Header({ thin = false }: { thin?: boolean }) {
         <nav className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5 sm:gap-x-4">
           <Link href="/join" className="type-label whitespace-nowrap text-muted hover:text-ink">
             Join
+          </Link>
+          <Link
+            href="/leaderboard"
+            className="type-label whitespace-nowrap text-muted hover:text-ink"
+          >
+            Board
           </Link>
           <PricingLink />
           <HeaderAccount />

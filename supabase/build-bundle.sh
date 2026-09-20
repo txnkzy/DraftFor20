@@ -30,6 +30,7 @@ FILES=(
   # by the version that has no Force in it — which is the exact shape of the
   # df20_clean_logo_url outage, a caller applied before its dependency.
   0055_force_or_take
+  0057_usernames_and_leaderboard
 )
 
 {

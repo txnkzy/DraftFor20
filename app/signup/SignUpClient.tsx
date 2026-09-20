@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { track } from "@/lib/analytics";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Field, TextInput } from "@/components/ui/Field";
 import { Footer, Header, SetupNotice } from "@/components/site/Chrome";
 import { passwordProblem, safeNext } from "@/lib/auth";
 import { Turnstile } from "@/components/site/Turnstile";
-import { supabaseConfigured } from "@/lib/supabase/client";
+import { supabaseBrowser, supabaseConfigured } from "@/lib/supabase/client";
+import { USERNAME_RULES, USERNAME_SAYS, usernameCode, type UsernameProblem } from "@/lib/username";
 
 export function SignUpClient() {
   if (!supabaseConfigured()) return <SetupNotice />;
@@ -19,6 +20,12 @@ export function SignUpClient() {
 function SignUp() {
   const router = useRouter();
   const [email, setEmail] = useState("");
+  const [handle, setHandle] = useState("");
+  /* "idle" until they type. The availability round trip is a courtesy — the
+     unique index is what actually decides, so a name that passes here can
+     still lose a race and come back taken. */
+  const [avail, setAvail] = useState<{ for: string; ok: boolean; problem: UsernameProblem | null } | null>(null);
+  const hSeq = useRef(0);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
@@ -34,10 +41,53 @@ function SignUp() {
 
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
   const mismatch = confirm.length > 0 && confirm !== password;
-  const ready = emailOk && password.length > 0 && !mismatch && !busy;
+
+  /* SHAPE IS DERIVED, NOT STORED — deciding it inside the effect meant a
+     synchronous setState and a wasted second render for a pure function of
+     the input. Only the round trip needs state, and it is written from the
+     timeout rather than the effect body.
+
+     Every request is stamped and only the newest may write, or a slow early
+     check lands after a fast later one and reports "taken" for a free name. */
+  const typedHandle = handle.trim().toLowerCase();
+  const hShape = typedHandle ? usernameCode(typedHandle) : null;
+
+  useEffect(() => {
+    if (!typedHandle || hShape) return;
+    const mine = ++hSeq.current;
+    const t = setTimeout(() => {
+      void (async () => {
+        const { data, error: e } = await supabaseBrowser().rpc("handle_available", { p_handle: typedHandle });
+        if (mine !== hSeq.current) return;
+        if (e) return;
+        const d = data as { available?: boolean; problem?: UsernameProblem | null } | null;
+        setAvail({ for: typedHandle, ok: Boolean(d?.available), problem: d?.problem ?? null });
+      })();
+    }, 350);
+    return () => clearTimeout(t);
+  }, [typedHandle, hShape]);
+
+  const hState: "idle" | "checking" | "free" | "bad" =
+    !typedHandle ? "idle"
+    : hShape ? "bad"
+    : avail && avail.for === typedHandle ? (avail.ok ? "free" : "bad")
+    : "checking";
+  const hProblem: UsernameProblem | null =
+    hShape ?? (avail && avail.for === typedHandle && !avail.ok ? avail.problem : null);
+
+  /* The username must be well formed AND not already reported taken. A
+     "checking" state still blocks: letting someone submit mid-check is how
+     you get a confident form and a generated name on the other side. */
+  const handleOk = hShape === null && hState === "free";
+  const ready = emailOk && handleOk && password.length > 0 && !mismatch && !busy;
 
   async function submit() {
     setError(null);
+    const badHandle = usernameCode(handle);
+    if (badHandle) {
+      setError(USERNAME_SAYS[badHandle]);
+      return;
+    }
     const problem = passwordProblem(password, email);
     if (problem) {
       setError(problem);
@@ -62,7 +112,7 @@ function SignUp() {
       const r = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), password, next, turnstileToken }),
+        body: JSON.stringify({ email: email.trim(), password, handle: handle.trim(), next, turnstileToken }),
       });
       res = (await r.json()) as typeof res;
     } catch {
@@ -121,6 +171,29 @@ function SignUp() {
         </p>
 
         <div className="mt-7 flex flex-col gap-5">
+          <Field
+            label="username"
+            hint={
+              hState === "checking" ? "checking…"
+              : hState === "free" ? "available"
+              : hState === "bad" ? USERNAME_SAYS[hProblem ?? "charset"]
+              : USERNAME_RULES
+            }
+            htmlFor="handle"
+          >
+            <TextInput
+              id="handle"
+              value={handle}
+              autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              maxLength={20}
+              placeholder="yourname"
+              onChange={(e) => setHandle(e.target.value.toLowerCase())}
+            />
+          </Field>
+
           <Field label="email" htmlFor="email">
             <TextInput
               id="email"
