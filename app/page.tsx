@@ -86,12 +86,17 @@ export default function Home() {
             <Link href="/new" className="btn btn-primary h-14 px-6 text-[0.9375rem]">
               Start a room
             </Link>
+            {/* Second, not third: arriving alone is the common case. Roughly
+                one room in four never found a second player. */}
+            <Link href="/quick-play" className="btn btn-ghost h-14 px-6 text-[0.9375rem]">
+              Play solo
+            </Link>
             <Link href="/join" className="btn btn-ghost h-14 px-6 text-[0.9375rem]">
               Join with a code
             </Link>
           </div>
           <p className="mt-3 text-[0.8125rem] text-muted">
-            No signup. Your opponent just needs the code.
+            No signup. Bring someone, or draft against The House on your own.
           </p>
         </section>
 

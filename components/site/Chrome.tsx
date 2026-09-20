@@ -33,6 +33,12 @@ export function Header({ thin = false }: { thin?: boolean }) {
             which is the button immediately beside it. It stays in the footer,
             so it is still internally linked and still crawlable. */}
         <nav className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1.5 sm:gap-x-4">
+          <Link
+            href="/quick-play"
+            className="type-label whitespace-nowrap text-muted hover:text-ink"
+          >
+            Solo
+          </Link>
           <Link href="/join" className="type-label whitespace-nowrap text-muted hover:text-ink">
             Join
           </Link>

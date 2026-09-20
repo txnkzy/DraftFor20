@@ -340,6 +340,16 @@ function NewRoom() {
           You get a code to send. The deck deals the picks, so neither player ever sees what is
           coming.
         </p>
+        {/* This page assumes a second person is coming. Roughly one room in
+            four never found one, so the way out is offered before the form
+            rather than after the wait. */}
+        <p className="mt-2 text-[0.875rem] text-muted">
+          On your own?{" "}
+          <a href="/quick-play" className="text-ink underline">
+            Draft against The House
+          </a>{" "}
+          instead — no code, no waiting.
+        </p>
 
         <div className="mt-7 flex flex-col gap-3">
           <span className="type-label text-muted">where do the picks come from</span>
