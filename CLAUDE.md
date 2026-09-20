@@ -403,6 +403,28 @@ npx eslint .
 npx vercel deploy --prod --yes
 ```
 
+### Starting on a new machine
+
+```bash
+git clone https://github.com/txnkzy/DraftFor20.git
+cd DraftFor20
+npm install
+```
+
+Then create `.env.local` — it is gitignored and deliberately not in the repo.
+Copy the values from Vercel (Project → Settings → Environment Variables,
+Production). At minimum `NEXT_PUBLIC_SUPABASE_URL` and
+`NEXT_PUBLIC_SUPABASE_ANON_KEY`; the Stripe and `DF20_BILLING_SECRET` values
+are only needed if you are working on billing locally.
+
+On Windows the npm scripts and `npx` commands above work unchanged in
+PowerShell. `supabase/build-bundle.sh` is bash — use Git Bash or WSL for that
+one, or just paste the migrations into the Supabase SQL Editor, which is how
+they get applied anyway.
+
+Pushing to `main` deploys to production through the GitHub↔Vercel
+integration. There is no separate deploy step.
+
 ### Database
 
 `supabase/APPLY_V7.sql` is the current bundle — `0008`–`0042`, additive,
@@ -490,11 +512,18 @@ Framer Motion is imported **only** by the landing scroll sequence, via
   Supabase's redirect allowlist, Stripe's webhook endpoint and return URLs —
   has to use the www form or it is handed a redirect it will not follow.
   Cloudflare proxies to Vercel; `x-vercel-id` is present on responses.
-- **Stripe has never run.** The framework is complete and the no-keys path is
-  verified end to end, but no real checkout, webhook or subscription lifecycle
-  has been exercised against Stripe. `periodEnd()` in the webhook reads the
-  period end from both the subscription and its first item, because Stripe
-  moved it in 2025 and we cannot test which one this account returns.
+- **Stripe is live and the day pass works.** A real £1 pass has been bought,
+  failed, been debugged and been granted. What is NOT proven is the
+  SUBSCRIPTION path: it needs `checkout.session.completed`, the
+  `customer.subscription.*` and the `invoice.*` events enabled on the webhook
+  endpoint, and if only `payment_intent.succeeded` is enabled the monthly plan
+  fails exactly as the pass did. `periodEnd()` reads the period end from both
+  the subscription and its first item, because Stripe moved it in 2025 and
+  nobody has confirmed which this account returns.
+- **The webhook grants a pass from EITHER announcement.**
+  `checkout.session.completed` and `payment_intent.succeeded` both do it, keyed
+  on the payment intent rather than the event id so two events for one purchase
+  cannot grant 48 hours. Do not "simplify" that back to the event id.
 - **Custom categories still gate on sign-in, not premium.** Deliberate: they
   have been free-with-an-account since 0015 and taking that away before
   payments exist would be a downgrade. `PREMIUM_GATES.customCategories` in
@@ -506,6 +535,33 @@ Framer Motion is imported **only** by the landing scroll sequence, via
   nobody has watched a tally move in one browser because of a vote cast in
   another.
 - **The OBS overlay has never been loaded by OBS itself**, only by a browser
-  at 9:16. Transparency there depends on CEF honouring a transparent body,
-  which it does, but nobody has watched it composite over a real scene.
-- **Nothing is committed to git** beyond the initial scaffold.
+  at 9:16. Transparency IS verified — html, body and the stage root all compute
+  to `rgba(0,0,0,0)` and the page was rendered over a striped backdrop with the
+  stripes showing through everywhere except the plates — but nobody has watched
+  it composite over a real scene. Note the page sets `frame-ancestors 'none'`,
+  so it cannot be iframed; OBS Browser Source is not an iframe and is
+  unaffected.
+- **Migrations 0041 and 0052–0056 are written but NOT APPLIED to the live
+  database.** This is the top of the list. Until 0041 runs, `create_room`
+  lacks `p_allow_broke` and **Content Creator rooms cannot be created at all**.
+  0054 is the one that restores EXECUTE to the server's own functions. Apply
+  them in numeric order; all are idempotent. Rooms already created are fine.
+- **0048 revoked EXECUTE from PUBLIC, and that broke four things silently.**
+  It was right to do — 100 of 103 functions were callable with the publishable
+  key — but this app's own SERVER routes also present that key, and they were
+  not re-granted. It broke billing writes, the billing failure logger, signup
+  signal recording and `df20_rate_limit` (which fails OPEN, so every rate limit
+  was disabled). 0054 fixes it. If you add a new secret-gated function the
+  server calls with the anon key, it needs an explicit grant to `anon`.
+- **Analytics is built but dormant.** GA4 with Consent Mode v2, default denied
+  everywhere, loads nothing until a visitor accepts. `NEXT_PUBLIC_GA_ID` is
+  unset, so there is no measurement id and no data. Setting it turns it on.
+- **AdSense is not approved and its hosts are deliberately absent from the
+  CSP.** The day an ad snippet is pasted in it will be blocked and do nothing
+  until `next.config.ts` is updated. There is no `ads.txt` either.
+- **`supabase/APPLY_V7.sql` does not apply to a FRESH database** —
+  `DF20_ANIME_TOO_SMALL`, because Jujutsu Kaisen Characters has 28 items
+  against a 30 guard in `0046_anime_categories.sql`. The live database was
+  built incrementally and is unaffected; only a rebuild hits this.
+- **`/results/[code]`** (the standalone page, not the in-room one) never passes
+  a session token, so the audience tally never renders there.
