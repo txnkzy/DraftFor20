@@ -52,6 +52,54 @@ function useLiveAudience(
   return pushed ?? initial;
 }
 
+interface Axis {
+  key: string;
+  label: string;
+  score: number;
+  snipes?: number;
+  bought?: number;
+  avg_price_cents?: number;
+  losing_raises?: number;
+  leftover_cents?: number;
+}
+interface ScoutPlayer {
+  seat: number;
+  name: string;
+  title: string;
+  axes: Axis[];
+}
+interface Scout {
+  ready: boolean;
+  players?: ScoutPlayer[];
+  head_to_head?: {
+    played: number;
+    seat1_wins: number;
+    seat2_wins: number;
+    draws: number;
+  } | null;
+}
+
+/** What each axis says about THIS draft, in the units a player recognises. */
+function axisNote(a: Axis): string {
+  if (a.key === "sniper" && a.bought !== undefined)
+    return `${a.snipes} of ${a.bought} bought at the minimum`;
+  if (a.key === "whale" && a.avg_price_cents !== undefined)
+    return `${formatCents(a.avg_price_cents)} a card on average`;
+  if (a.key === "instigator" && a.losing_raises !== undefined)
+    return `${a.losing_raises} raise${a.losing_raises === 1 ? "" : "s"} that did not win`;
+  if (a.key === "hoarder" && a.leftover_cents !== undefined)
+    return `finished with ${formatCents(a.leftover_cents)}`;
+  return "";
+}
+
+const TITLE_BLURB: Record<string, string> = {
+  sniper: "took the minimum and let the rest go",
+  whale: "paid up for the ones that mattered",
+  instigator: "drove the price up and walked away",
+  hoarder: "left the most money on the table",
+  quiet: "nothing stood out",
+};
+
 export function ResultsBoard({
   state,
   sessionToken = null,
@@ -63,6 +111,21 @@ export function ResultsBoard({
 }) {
   const card = buildCardModel(state);
   const audience = useLiveAudience(state.room.id, card.code, sessionToken);
+
+  /* The four axes for THIS draft, both players. Read in the thirty seconds
+     after it ends, which is when anyone cares — the same numbers on /profile
+     a week later are trivia. */
+  const [scout, setScout] = useState<Scout | null>(null);
+  useEffect(() => {
+    let off = false;
+    void (async () => {
+      const { data } = await supabaseBrowser().rpc("room_scouting", { p_code: card.code });
+      if (!off) setScout((data as Scout | null) ?? null);
+    })();
+    return () => {
+      off = true;
+    };
+  }, [card.code]);
 
   return (
     <div className="flex flex-col gap-7">
@@ -134,6 +197,81 @@ export function ResultsBoard({
             ? ` ${card.giftCount} ${card.giftCount === 1 ? "player was" : "players were"} handed over for free.`
             : ""}
         </p>
+      ) : null}
+
+      {/* HOW EACH OF YOU DRAFTED. The axes have existed since 0022 and lived
+          on /profile, where nobody was looking. Side by side, immediately
+          after, they are an argument rather than a statistic. */}
+      {scout?.ready && scout.players && scout.players.length > 0 ? (
+        <div className="flex flex-col gap-4">
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 className="type-display text-[1.125rem]">How you drafted</h2>
+            {scout.head_to_head && scout.head_to_head.played > 1 ? (
+              <span className="type-num text-[0.8125rem] text-muted">
+                {scout.head_to_head.played} drafts ·{" "}
+                <span className="text-ink">
+                  {scout.head_to_head.seat1_wins}&ndash;{scout.head_to_head.seat2_wins}
+                </span>
+                {scout.head_to_head.draws > 0 ? ` · ${scout.head_to_head.draws} drawn` : ""}
+              </span>
+            ) : null}
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+            {scout.players.map((p) => {
+              const accent = seatAccent(p.seat);
+              return (
+                <section key={p.seat} className="flex flex-col gap-3">
+                  <div className="flex items-baseline gap-2">
+                    <span style={{ width: 8, height: 8, background: accent }} aria-hidden />
+                    <span className="type-display text-[0.9375rem]">{p.name}</span>
+                    <span className="type-label" style={{ color: accent }}>
+                      {p.title}
+                    </span>
+                  </div>
+                  <p className="text-[0.8125rem] leading-snug text-muted">
+                    {TITLE_BLURB[p.title] ?? ""}
+                  </p>
+                  <div className="flex flex-col gap-2.5">
+                    {p.axes.map((a) => (
+                      <div key={a.key}>
+                        <div className="flex items-baseline gap-2">
+                          <span className="type-label min-w-0 flex-1 truncate text-muted">
+                            {a.label}
+                          </span>
+                          <span className="type-num shrink-0 text-[0.75rem] text-ink">
+                            {a.score}
+                          </span>
+                        </div>
+                        {/* The bar is the comparison between the two of you;
+                            the note underneath is what produced it, so the
+                            number is never something to take on trust. */}
+                        <div
+                          className="mt-1 w-full overflow-hidden"
+                          style={{ height: 5, background: "var(--color-surface)", borderRadius: 3 }}
+                          role="img"
+                          aria-label={`${p.name} ${a.label}: ${a.score} out of 100`}
+                        >
+                          <div
+                            style={{
+                              width: `${a.score}%`,
+                              height: "100%",
+                              background: accent,
+                              borderRadius: 3,
+                            }}
+                          />
+                        </div>
+                        <p className="mt-0.5 text-[0.6875rem] leading-snug text-muted">
+                          {axisNote(a)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        </div>
       ) : null}
 
       {/* The players used to vote on who won, right here. Two people asked
