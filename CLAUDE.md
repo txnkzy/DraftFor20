@@ -178,7 +178,18 @@ splits cleanly in two — Bijan Robinson at 58,695 and then a flat 19-21k
 plateau of stub articles nobody sought out — so the generator cuts at 40% of
 the tenth-ranked player rather than taking a fixed top N. That yields ~37 NFL
 and ~31 NBA, all recognisable. **NFL Players is the preselected default on
-/new**, ahead of the 268 text-only names in Football Draft.
+/new.**
+
+**Football Draft was rebuilt for recognisability.** It held 268 names of which
+only 26 — 10% — cleared the same pageview cut that produces NFL Players, so a
+five-slot draft dealt roughly one card per game that anybody could argue
+about. It was also the only deck with no pictures at all, 0 of 268, and it
+contained offensive linemen and kickers: "who would you rather have" is not a
+question two people can argue about for a centre. It is now the union of NFL
+Players and NFL All-Time Greats — 94 names, all pictured, all already curated
+— so it plays current stars against all-time greats. Rooms dealt before the
+change are unaffected, because room_pool copies name, image and licence by
+value with no foreign key back to the library.
 
 **`df20_seed_category` upserts and never deletes.** Re-seeding a category that
 has SHRUNK leaves every dropped item behind, which is how a list cut to 37
