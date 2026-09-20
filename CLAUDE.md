@@ -437,6 +437,28 @@ Rebuild it after editing any migration:
 ./supabase/build-bundle.sh
 ```
 
+### Migration numbering — two people, one sequence
+
+Numbers are picked by hand, so two people working at once WILL collide, and
+git will not notice: `0057_one_free_lookup.sql` and
+`0057_usernames_and_leaderboard.sql` are different filenames, so a merge
+containing both is perfectly clean. The damage arrives later, when somebody
+has to decide which 0057 runs first.
+
+```bash
+npm run check:migrations
+```
+
+Run it before pushing. It fails on two files claiming one number, and on one
+function being defined by two different files on the same number — the case
+where nothing decides which definition wins. Redefining a function in a
+*later* migration is normal and is not flagged.
+
+**Renumbering is free until a migration has been applied** — the database
+only cares what SQL runs, never what the file was called. Once it is applied
+anywhere, leave the name alone and add the number to `HISTORICAL` in the
+script instead.
+
 `0017`–`0020` are the v6 additions: profiles and premium, saved decks, the OBS
 and audience-vote surface, billing writes and the admin grant. `0021`–`0025`
 are v7: the no-limit clock, the scouting report, room content modes, the
@@ -541,11 +563,15 @@ Framer Motion is imported **only** by the landing scroll sequence, via
   it composite over a real scene. Note the page sets `frame-ancestors 'none'`,
   so it cannot be iframed; OBS Browser Source is not an iframe and is
   unaffected.
-- **Migrations 0041 and 0052–0056 are written but NOT APPLIED to the live
-  database.** This is the top of the list. Until 0041 runs, `create_room`
-  lacks `p_allow_broke` and **Content Creator rooms cannot be created at all**.
+- **Eight migrations are written but NOT APPLIED to the live database:**
+  `0041_allow_broke`, `0052`, `0053`, `0054`, `0056`, `0060`, `0061`, `0062`.
+  This is the top of the list. Until 0041 runs, `create_room` lacks
+  `p_allow_broke` and **Content Creator rooms cannot be created at all**.
   0054 is the one that restores EXECUTE to the server's own functions. Apply
   them in numeric order; all are idempotent. Rooms already created are fine.
+  (0055, 0057, 0058 and 0059 in that range are the other author's and are
+  not part of this set — mine were renumbered to 0060+ to clear the
+  collisions `npm run check:migrations` now catches.)
 - **0048 revoked EXECUTE from PUBLIC, and that broke four things silently.**
   It was right to do — 100 of 103 functions were callable with the publishable
   key — but this app's own SERVER routes also present that key, and they were
