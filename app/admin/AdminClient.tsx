@@ -10,6 +10,7 @@ import { Footer, Header, SetupNotice } from "@/components/site/Chrome";
 import { Changelog } from "@/components/admin/Changelog";
 import { useCollapsed } from "@/components/admin/Collapsed";
 import { TrustSignals } from "@/components/admin/TrustSignals";
+import { Funnel, Meter } from "@/components/admin/Meter";
 import { supabaseBrowser, supabaseConfigured } from "@/lib/supabase/client";
 
 /**
@@ -637,15 +638,20 @@ function Admin() {
 
             {activity.rooms.week_joined !== undefined ? (
               <div>
-                <p className="type-label text-muted">
-                  of the {activity.rooms.week} created this week
-                </p>
-                <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-4">
-                  <Stat label="got a 2nd player" value={activity.rooms.week_joined ?? 0} />
-                  <Stat label="started" value={activity.rooms.week_started ?? 0} />
-                  <Stat label="finished" value={activity.rooms.week_complete ?? 0} />
-                  <Stat label="never filled" value={activity.rooms.week_empty ?? 0} />
-                </dl>
+                <p className="type-label text-muted">this week, stage by stage</p>
+                {/* Four tiles made you divide by the first one in your head.
+                    Created is the denominator and every later stage is a
+                    survivor of it, so the drop-off is the finding. */}
+                <div className="mt-3">
+                  <Funnel
+                    steps={[
+                      { label: "rooms created", value: activity.rooms.week },
+                      { label: "got a 2nd player", value: activity.rooms.week_joined ?? 0 },
+                      { label: "started", value: activity.rooms.week_started ?? 0 },
+                      { label: "finished", value: activity.rooms.week_complete ?? 0 },
+                    ]}
+                  />
+                </div>
                 <p className="mt-2 text-[0.8125rem] leading-relaxed text-muted">
                   {activity.rooms.week > 0
                     ? `${Math.round(((activity.rooms.week_empty ?? 0) / activity.rooms.week) * 100)}% of this week's rooms never found a second player. That is normal — a code gets made and not used — but it is why the created figure is not a count of games played.`
@@ -666,12 +672,37 @@ function Admin() {
             {activity.hosts ? (
               <div>
                 <p className="type-label text-muted">does anybody come back</p>
-                <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-4">
-                  <Stat label="accounts that hosted" value={activity.hosts.total} />
-                  <Stat label="hosted more than once" value={activity.hosts.repeat} />
-                  <Stat label="finished at least one" value={activity.hosts.finished_one} />
-                  <Stat label="most by one account" value={activity.hosts.most_by_one} />
-                </dl>
+                {/* "2 repeat hosts" means nothing without the 3 it is out
+                    of. Each bar carries its own denominator. */}
+                <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                  {activity.onboarding ? (
+                    <Meter
+                      label="accounts that ever hosted"
+                      value={activity.onboarding.ever_hosted}
+                      of={activity.onboarding.accounts}
+                      tone="teal"
+                    />
+                  ) : null}
+                  <Meter
+                    label="hosted more than once"
+                    value={activity.hosts.repeat}
+                    of={activity.hosts.total}
+                    tone="teal"
+                  />
+                  <Meter
+                    label="finished at least one"
+                    value={activity.hosts.finished_one}
+                    of={activity.hosts.total}
+                    tone="teal"
+                  />
+                  <Meter
+                    label="most drafts by one account"
+                    value={activity.hosts.most_by_one}
+                    of={Math.max(activity.hosts.most_by_one, 5)}
+                    suffix=""
+                    note="against a scale of five, so one enthusiast does not look like growth"
+                  />
+                </div>
                 {activity.onboarding ? (
                   <p className="mt-2 text-[0.8125rem] leading-relaxed text-muted">
                     {activity.onboarding.ever_hosted} of {activity.onboarding.accounts} accounts
@@ -731,17 +762,27 @@ function Admin() {
                       <span className="type-num shrink-0 text-[0.8125rem] text-muted">
                         {c.finished}/{c.drafts}
                       </span>
+                      {/* One hue, not a traffic light. Coral means tension
+                          and gold means money everywhere else on this site;
+                          spending them on "bad category" would cost the board
+                          its vocabulary. The bar is the comparison, the number
+                          is the read, and neither depends on colour. */}
                       <span
-                        className="type-num w-12 shrink-0 text-right text-[0.8125rem]"
-                        style={{
-                          color:
-                            (c.rate ?? 0) >= 50
-                              ? "var(--color-teal)"
-                              : (c.rate ?? 0) > 0
-                                ? "var(--color-gold)"
-                                : "var(--color-coral)",
-                        }}
+                        className="hidden h-1.5 w-24 shrink-0 overflow-hidden sm:block"
+                        style={{ background: "var(--color-surface)", borderRadius: 3 }}
+                        role="img"
+                        aria-label={`${c.rate ?? 0}% finished`}
                       >
+                        <span
+                          className="block h-full"
+                          style={{
+                            width: `${c.rate ?? 0}%`,
+                            background: "var(--color-teal)",
+                            borderRadius: 3,
+                          }}
+                        />
+                      </span>
+                      <span className="type-num w-12 shrink-0 text-right text-[0.8125rem] text-ink">
                         {c.rate === null ? "—" : `${c.rate}%`}
                       </span>
                     </li>
@@ -1080,6 +1121,25 @@ function Split({ title, rows }: { title: string; rows: [string, number][] }) {
         {rows.map(([label, n]) => (
           <li key={label} className="flex items-baseline gap-2 border-b py-1.5 rule">
             <span className="min-w-0 flex-1 truncate text-[0.8125rem]">{label}</span>
+            {/* These rows were already a percentage of a whole and only said
+                so in digits. The bar is the comparison between rows; the
+                number stays because the bar is not precise enough to read a
+                17 off. Ink, not a hue: this is composition, not status. */}
+            <span
+              className="hidden h-1.5 w-20 shrink-0 overflow-hidden sm:block"
+              style={{ background: "var(--color-surface)", borderRadius: 3 }}
+              role="img"
+              aria-label={`${total > 0 ? Math.round((n / total) * 100) : 0}% of the total`}
+            >
+              <span
+                className="block h-full"
+                style={{
+                  width: `${total > 0 ? (n / total) * 100 : 0}%`,
+                  background: "var(--color-ink)",
+                  borderRadius: 3,
+                }}
+              />
+            </span>
             <span className="type-num text-[0.8125rem]">{n}</span>
             <span className="type-num w-10 shrink-0 text-right text-[0.6875rem] text-muted">
               {total > 0 ? `${Math.round((n / total) * 100)}%` : "—"}
