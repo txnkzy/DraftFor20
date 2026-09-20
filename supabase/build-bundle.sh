@@ -68,6 +68,8 @@ FILES=(
   # goes back to being a button that cannot find the room it made.
   20260920134315_rematch
   20260920135142_football_draft_recognisable
+  # AFTER the rematch file, which it restates create_rematch from.
+  0068_rematch_same_category
   # ABSOLUTELY LAST. Four files define offer_decide and three of them have no
   # force branch, so whichever runs last wins. This one restores it. Lost
   # twice already — 8 Sep (12 days, ~550 dead drafts) and again on 20 Sep
