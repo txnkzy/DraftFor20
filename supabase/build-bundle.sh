@@ -39,15 +39,17 @@ FILES=(
   # only becomes user-chosen in 0057. Applied before it, the trigger would
   # reference handle_chosen before the column exists.
   #
-  # NOTE: 0058_username_word_filter is a SECOND, independent word filter for
-  # handles, written in parallel. Handles are currently checked twice against
-  # two different lists. See the header of 0063 — this needs resolving, not
-  # leaving.
   0063_clean_names
   0064_quick_play
-  # LAST, and it is an assertion rather than a definition: 0055 was applied,
-  # worked for two days, and was silently overwritten by a restated
-  # offer_decide. A comment did not prevent that. This fails the bundle.
+  # AFTER 0063: it folds that file's list into 0058's tables and then DROPS
+  # df20_profanity. Run before 0063 and it would seed from a table that does
+  # not exist yet, then delete the one 0063 is about to create.
+  0066_one_word_filter
+  0067_quick_play_cap
+  # ABSOLUTELY LAST. Four files define offer_decide and three of them have no
+  # force branch, so whichever runs last wins. This one restores it. Lost
+  # twice already — 8 Sep (12 days, ~550 dead drafts) and again on 20 Sep
+  # within two hours of being fixed. Do not move it.
   0065_restore_force_or_take
 )
 

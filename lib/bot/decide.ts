@@ -34,8 +34,13 @@ export interface BotChoice {
 /** The slice of df20_bot_turn() the decider needs. */
 export interface BotTurn {
   turn: boolean;
-  /** optimistic-concurrency counter; also the per-turn LLM budget key */
+  /** optimistic-concurrency counter */
   turn_seq: number;
+  /** the card being decided. The LLM budget is keyed on this, not turn_seq:
+   *  "do I want this card" is asked once, and the raises after it are
+   *  arithmetic the heuristic already does correctly. Cuts calls per draft
+   *  from ~25 to ~10 without changing who decides the interesting part. */
+  lot_id: string;
   phase: "offered" | "bidding";
   category: string | null;
   item: string;
@@ -57,8 +62,6 @@ export interface BotTurn {
   };
   fallback: { action: BotAction; amount_cents?: number; why: string };
 }
-
-const money = (c: number) => `$${(c / 100).toFixed(2)}`;
 
 /**
  * The legal moves, worked out here rather than asked of the model. Giving it
@@ -82,37 +85,50 @@ function legalMoves(t: BotTurn): BotAction[] {
   return moves;
 }
 
+/**
+ * The prompt, written for tokens rather than for reading.
+ *
+ * The prose version cost ~206 input tokens a decision, ~5,200 a draft. This
+ * one is ~80, because on a free tier the budget IS the product constraint:
+ * Gemini Flash-Lite is 250k tokens/minute and 1,000 requests/day, and the
+ * thing that runs out first should be requests, not tokens.
+ *
+ * WHAT WAS CUT AND WHY:
+ *  * the rules. A model that needs "whatever you do not spend is your score"
+ *    explained every turn is not the one making the difference; the closed
+ *    list of legal moves already prevents anything illegal, and economics is
+ *    what the heuristic is for.
+ *  * roster history beyond the last three. It grows to eight entries by the
+ *    end of a draft and adds tokens every turn to say something the bankroll
+ *    already says.
+ *  * long keys. "a"/"c"/"w" instead of action/amount_cents/why costs nothing
+ *    in comprehension and saves output tokens on every single call.
+ *  * dollars as integers. "$12.00" is three tokens; "1200c" is two.
+ *
+ * WHAT WAS KEPT: the card, both bankrolls, both slot counts, the recent
+ * rosters and the legal moves. That is the whole decision.
+ */
 function prompt(t: BotTurn, legal: BotAction[]): string {
-  const roster = (r: { item: string; price_cents: number }[]) =>
-    r.length ? r.map((e) => `${e.item} (${money(e.price_cents)})`).join(", ") : "empty";
+  // last three only: the tail is what a person would actually glance at
+  const tail = (r: { item: string; price_cents: number }[]) =>
+    r.length === 0
+      ? "-"
+      : r.slice(-3).map((e) => `${e.item} ${e.price_cents}`).join("; ");
 
-  const rules =
+  const line =
     t.phase === "bidding"
-      ? `The current bid is ${money(t.current_bid_cents)}. Raising means bidding ` +
-        `${money(t.current_bid_cents + t.min_bid_cents)}. You cannot bid more than ` +
-        `${money(t.me.max_legal_bid_cents)}.`
-      : `You opened this card. Taking it costs ${money(t.min_bid_cents)}. ` +
-        `Giving it away puts it on ${t.opponent.name}'s roster for free and uses ` +
-        `one of your ${t.me.gives_left} remaining gives. ` +
-        `Forcing means it lands on your roster for $0 because you cannot afford it.`;
+      ? `bid ${t.current_bid_cents} raise ${t.current_bid_cents + t.min_bid_cents} max ${t.me.max_legal_bid_cents}`
+      : `open ${t.min_bid_cents} gives ${t.me.gives_left} max ${t.me.max_legal_bid_cents}`;
 
   return [
-    `You are ${t.me.name}, playing a two-player auction draft against ${t.opponent.name}.`,
-    `Category: ${t.category ?? "mixed"}. The card on the table is: ${t.item}.`,
-    ``,
-    `You: ${money(t.me.bankroll_cents)} left, ${t.me.open_slots} roster slot(s) to fill.`,
-    `Your roster: ${roster(t.me.roster)}`,
-    `${t.opponent.name}: ${money(t.opponent.bankroll_cents)} left, ${t.opponent.open_slots} slot(s) to fill.`,
-    `Their roster: ${roster(t.opponent.roster)}`,
-    ``,
-    rules,
-    ``,
-    `Whatever you do not spend is your score at the end, so overpaying loses.`,
-    `But a slot you never fill is worse than one filled cheaply.`,
-    ``,
-    `Choose exactly one of: ${legal.join(", ")}.`,
-    `Reply with ONLY a JSON object, no prose, no code fence:`,
-    `{"action":"<one of the above>","amount_cents":<integer, only if action is bid>,"why":"<max 12 words>"}`,
+    `$20 auction draft, cents. Score = cash left. Empty slot = worse.`,
+    `card: ${t.item}${t.category ? ` (${t.category})` : ""}`,
+    `you ${t.me.bankroll_cents} slots ${t.me.open_slots} | them ${t.opponent.bankroll_cents} slots ${t.opponent.open_slots}`,
+    `yours: ${tail(t.me.roster)}`,
+    `theirs: ${tail(t.opponent.roster)}`,
+    line,
+    `pick one: ${legal.join("|")}`,
+    `JSON only: {"a":"..."${legal.includes("bid") ? ',"c":<cents if bid>' : ""},"w":"<=8 words"}`,
   ].join("\n");
 }
 
@@ -126,19 +142,19 @@ function parseChoice(raw: string, legal: BotAction[], t: BotTurn): BotChoice | n
   } catch {
     return null;
   }
-  const action = String(obj.action ?? "") as BotAction;
+  const action = String(obj.a ?? obj.action ?? "") as BotAction;
   if (!legal.includes(action)) return null;
 
   let amount: number | undefined;
   if (action === "bid") {
-    amount = Math.trunc(Number(obj.amount_cents));
+    amount = Math.trunc(Number(obj.c ?? obj.amount_cents));
     if (!Number.isFinite(amount)) return null;
     // clamp rather than reject: a model that says "raise" and fumbles the
     // arithmetic still meant to raise, and Postgres would refuse the number
     const floor = t.current_bid_cents + t.min_bid_cents;
     amount = Math.max(floor, Math.min(amount, t.me.max_legal_bid_cents));
   }
-  const why = String(obj.why ?? "").slice(0, 80) || "no reason given";
+  const why = String(obj.w ?? obj.why ?? "").slice(0, 60) || "no reason given";
   return { action, amount_cents: amount, why, source: "llm" };
 }
 
@@ -173,7 +189,7 @@ const PROVIDERS: Provider[] = [
             contents: [{ parts: [{ text }] }],
             generationConfig: {
               temperature: 0.8,          // a predictable opponent is a boring one
-              maxOutputTokens: 120,
+              maxOutputTokens: 60,
               responseMimeType: "application/json",
             },
           }),
@@ -201,7 +217,7 @@ const PROVIDERS: Provider[] = [
         body: JSON.stringify({
           model,
           temperature: 0.8,
-          max_tokens: 120,
+          max_tokens: 60,
           response_format: { type: "json_object" },
           messages: [{ role: "user", content: text }],
         }),

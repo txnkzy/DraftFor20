@@ -22,7 +22,15 @@
 -- and separators (f.u.c.k, f u c k, f-u-c-k) both collapse into the squashed
 -- form before matching.
 --
--- ⚠ OVERLAPS 0058_username_word_filter, WRITTEN IN PARALLEL. That migration
+-- ⚠ SUPERSEDED IN PART BY 0066_one_word_filter. This file's df20_profanity
+-- table and its matching helpers are DROPPED there; df20_has_bad_word keeps
+-- its name and its callers but delegates to 0058's matcher, whose allow-list
+-- pass, repeat-collapsing and separator handling are all better than what is
+-- below. The triggers and DF20_NAME_TAKEN in this file are unchanged and
+-- still current. Kept as history rather than rewritten, because it is
+-- already applied and re-runnability matters more than tidiness.
+--
+-- Originally: OVERLAPS 0058_username_word_filter, WRITTEN IN PARALLEL. That migration
 -- built blocked_handle_words + df20_handle_explicit() for profiles.handle,
 -- with the same Scunthorpe reasoning and a different word list. This one's
 -- trigger ALSO guards profiles.handle. Handles are therefore checked twice,

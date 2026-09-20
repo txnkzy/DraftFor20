@@ -30,6 +30,8 @@ const MESSAGES: Record<string, string> = {
   DF20_NAME_TAKEN:
     "The other player is already using that name. Pick a different one.",
   DF20_BAD_WORD: "Keep it PG — pick a different name.",
+  DF20_SOLO_LIMIT:
+    "That's your three solo drafts for today. Two-player rooms are still unlimited, and premium lifts the cap.",
   DF20_TITLE_TOO_LONG: "Title caps at 60 characters.",
   DF20_BAD_BANKROLL: "That bankroll isn't valid.",
   DF20_BAD_MIN_BID: "That minimum bid isn't valid.",

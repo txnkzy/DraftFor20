@@ -38,12 +38,19 @@ export async function POST(req: Request) {
   // not the bot's turn is the normal case, not an error: the client polls
   if (!t?.turn) return NextResponse.json({ acted: false }, { status: 200 });
 
-  // One LLM call per turn per room. Without this a client that retries in a
-  // loop burns the whole day's free quota on a single draft — and the quota
-  // is ~1,000 requests against ~665 rooms a day, so there is nothing to
-  // spare. Exceeding it costs the LLM, never the move: the heuristic still
-  // plays, so the draft is unaffected.
-  const budget = await allow(`bot_llm:${code}`, String(t.turn_seq ?? 0), 1, 120);
+  // ONE LLM CALL PER CARD, not per turn.
+  //
+  // The judgment worth paying for is "do I want this card", and that is
+  // settled the moment it appears. Every turn after it on the same lot is
+  // "is the next bid still worth it", which is arithmetic — and arithmetic is
+  // exactly what df20_bot_heuristic does, for free, correctly, instantly.
+  // Keying the budget on lot_id rather than turn_seq takes a draft from ~25
+  // calls to ~10 and changes nothing a player would notice.
+  //
+  // It also caps the damage from a client retry loop: the quota is ~1,000
+  // requests/day against ~665 rooms/day, so there is nothing spare. Running
+  // out costs the LLM and never the move — the heuristic still plays.
+  const budget = await allow(`bot_llm:${code}`, String(t.lot_id ?? t.turn_seq ?? 0), 1, 600);
 
   const choice = budget
     ? await decide(t)

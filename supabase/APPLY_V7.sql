@@ -12629,6 +12629,28 @@ notify pgrst, 'reload schema';
 -- and separators (f.u.c.k, f u c k, f-u-c-k) both collapse into the squashed
 -- form before matching.
 --
+-- ⚠ SUPERSEDED IN PART BY 0066_one_word_filter. This file's df20_profanity
+-- table and its matching helpers are DROPPED there; df20_has_bad_word keeps
+-- its name and its callers but delegates to 0058's matcher, whose allow-list
+-- pass, repeat-collapsing and separator handling are all better than what is
+-- below. The triggers and DF20_NAME_TAKEN in this file are unchanged and
+-- still current. Kept as history rather than rewritten, because it is
+-- already applied and re-runnability matters more than tidiness.
+--
+-- Originally: OVERLAPS 0058_username_word_filter, WRITTEN IN PARALLEL. That migration
+-- built blocked_handle_words + df20_handle_explicit() for profiles.handle,
+-- with the same Scunthorpe reasoning and a different word list. This one's
+-- trigger ALSO guards profiles.handle. Handles are therefore checked twice,
+-- against two lists that will drift, and a word on one but not the other
+-- produces a different error depending on which fires first.
+--
+-- Neither is wrong; having both is. They should converge on one list — this
+-- one is seeded from LDNOOBW and covers display names, room titles and
+-- handles; that one has an allow-list pass and a token/substring mode per
+-- word, which is the better matching design. Whoever picks: keep 0058's
+-- match modes and allow list, point them at df20_profanity, and drop the
+-- handle branch from df20_guard_profile_name below.
+--
 -- Re-runnable.
 -- ═══════════════════════════════════════════════════════════════════════════
 
@@ -13302,63 +13324,434 @@ begin
   raise notice 'quick play ok - bot acts through the ordinary rpcs, deck sealed';
 end $$;
 
+-- ─────────── 0066_one_word_filter.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · 0066 · one word filter, not two
+--
+-- 0058 and 0063 were written in parallel and both ended up guarding
+-- profiles.handle: 0058 through df20_handle_explicit(), 0063 through the
+-- df20_guard_profile_name trigger. Two lists, two matching strategies, and a
+-- word on one but not the other gave a different error depending on which
+-- fired first. This converges them.
+--
+-- 0058'S MATCHER WINS, and it is not close. Three things it does that 0063
+-- did not:
+--   * the ALLOW LIST RUNS FIRST, blanking innocent words out of the string
+--     before matching, so 'scunthorpe' is gone before 'cunt' can see it.
+--     0063 leaned entirely on per-term whole-word flags, which is the same
+--     idea done later and less well.
+--   * REPEAT COLLAPSING — 'fuuuck' folds to 'fuck'. 0063 missed this
+--     completely and would have passed it.
+--   * a SEPARATOR-SPLIT token pass, so 'a_s_s' is caught.
+--
+-- 0063'S LIST AND COVERAGE WIN. 382 terms from the Shutterstock/LDNOOBW list
+-- against 0058's hand-written 46, and triggers on players.display_name and
+-- rooms.title rather than handles alone. A filter that only guards the
+-- username on a leaderboard leaves the name printed on the results card.
+--
+-- SO: 0058's tables and algorithm become the one source of truth, generalised
+-- from handles to any text; 0063's terms are folded into them and its
+-- df20_profanity table is dropped; 0063's trigger keeps its reach but stops
+-- checking handles, because df20_handle_problem already does.
+--
+-- TERMS ARE STORED PRE-FOLDED. The matcher compares against a leet-folded,
+-- letter-only, repeat-collapsed string, so a term stored raw can never match.
+-- '2 girls 1 cup' is stored as 'girlscup'; anything folding shorter than
+-- three characters is dropped rather than stored as a trap.
+--
+-- Re-runnable.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- ── the matcher, generalised ──────────────────────────────────────────────
+-- Byte for byte 0058's df20_handle_explicit, with one change: it takes any
+-- text. Handles are [a-z0-9_]; display names carry spaces, punctuation and
+-- unicode. Folding already strips all of that, and the token pass splits on
+-- any non-letter, so nothing about the algorithm needed to change.
+create or replace function public.df20_explicit_text(p_text text)
+returns boolean language plpgsql stable security definer
+set search_path = public, pg_temp as $$
+declare v_raw text; v_leet text; w text;
+begin
+  v_raw := lower(btrim(coalesce(p_text, '')));
+  if v_raw = '' then return false; end if;
+
+  -- from/to must be the SAME LENGTH or translate silently shifts the map
+  v_leet := translate(v_raw, '0134578@$!', 'oieastbasi');
+  v_leet := regexp_replace(v_leet, '[^a-z]', '', 'g');
+  v_leet := regexp_replace(v_leet, '(.)\1{2,}', '\1', 'g');
+
+  for w in select word from public.allowed_handle_words loop
+    v_leet := replace(v_leet, w, '.');
+  end loop;
+
+  if exists (select 1 from public.blocked_handle_words b
+              where b.mode = 'substring' and position(b.word in v_leet) > 0)
+  then return true; end if;
+
+  if exists (select 1 from public.blocked_handle_words b
+              where b.mode = 'token' and b.word = v_leet)
+  then return true; end if;
+
+  if exists (
+    select 1 from public.blocked_handle_words b
+     where b.mode = 'token'
+       and b.word = any (regexp_split_to_array(v_raw, '[^a-z]+'))
+  ) then return true; end if;
+
+  return false;
+end $$;
+revoke all on function public.df20_explicit_text(text) from public;
+grant execute on function public.df20_explicit_text(text) to anon, authenticated;
+
+-- the handle check becomes a thin call, so the two can never diverge again
+create or replace function public.df20_handle_explicit(p_handle text)
+returns boolean language sql stable security definer
+set search_path = public, pg_temp as $$
+  select public.df20_explicit_text(p_handle)
+$$;
+revoke all on function public.df20_handle_explicit(text) from public;
+
+-- df20_has_bad_word keeps its name and its callers (three triggers and
+-- check_display_name) and loses its own list.
+create or replace function public.df20_has_bad_word(p_in text)
+returns boolean language sql stable security definer
+set search_path = public, pg_temp as $$
+  select public.df20_explicit_text(p_in)
+      or coalesce(p_in,'') like '%🖕%'
+      or coalesce(p_in,'') like '%💩%'
+$$;
+grant execute on function public.df20_has_bad_word(text) to anon, authenticated;
+
+-- ── 0063's list, folded into 0058's table ─────────────────────────────────
+-- Folded IN SQL from df20_profanity rather than pasted as a literal: the
+-- transformation is the matcher's own, so a copied list could drift from it
+-- and this cannot. 'token' where 0063 said whole_word — the two flags mean
+-- the same thing — plus anything folding to three characters or fewer, which
+-- is too short to substring-match safely. Terms folding shorter are dropped
+-- rather than stored as a trap that can never match.
+--
+-- Runs BEFORE the drop below, obviously.
+insert into public.blocked_handle_words (word, mode)
+select f.w,
+       case when p.whole_word or length(f.w) <= 3 then 'token' else 'substring' end
+  from public.df20_profanity p,
+       lateral (select regexp_replace(
+                  regexp_replace(
+                    translate(lower(p.term), '0134578@$!', 'oieastbasi'),
+                    '[^a-z]', '', 'g'),
+                  '(.)\1{2,}', '\1', 'g') as w) f
+ where length(f.w) >= 3
+on conflict (word) do nothing;
+
+-- Widen the allow list with the false positives 0063's own assertions
+-- covered, since they now have to survive a different matcher.
+insert into public.allowed_handle_words (word) values
+  ('montenegro'),('raccoon'),('among'),('mongoose'),('mongolia'),
+  ('harpoon'),('spoon'),('lampoon'),('tycoon'),('cocoon'),
+  ('scatter'),('scattered'),('despicable'),('suspicion'),('spice'),
+  ('uranus'),('manuscript'),('butter'),('button'),('buttress'),
+  ('dickens'),('dickinson'),('hitchcock'),('shuttlecock'),
+  ('cassandra'),('kassandra'),('vandyke'),('wang'),('proof'),
+  ('scrape'),('drape'),('therapeutic'),('titus'),('titanic'),
+  ('constitution'),('substitute'),('nudge'),('denude'),('prudence')
+on conflict (word) do nothing;
+
+-- ── the trigger stops double-guarding handles ─────────────────────────────
+-- df20_handle_problem() already returns 'explicit' for a bad handle, which is
+-- the error the username form is built to render. The trigger firing as well
+-- produced DF20_BAD_WORD from a different list — two answers to one question.
+create or replace function public.df20_guard_profile_name()
+returns trigger language plpgsql
+set search_path = public, pg_temp as $$
+begin
+  if new.display_name is not null
+     and public.df20_has_bad_word(new.display_name) then
+    raise exception 'DF20_BAD_WORD';
+  end if;
+  -- handles are NOT checked here any more: set_my_handle -> handle_available
+  -- -> df20_handle_problem() owns that, and gives a better error doing it.
+  return new;
+end $$;
+
+drop trigger if exists df20_profiles_clean_name on public.profiles;
+create trigger df20_profiles_clean_name
+  before insert or update of display_name on public.profiles
+  for each row execute function public.df20_guard_profile_name();
+
+-- ── the old list goes ─────────────────────────────────────────────────────
+-- Nothing reads it once df20_has_bad_word delegates. Leaving it would be a
+-- second list that looks authoritative and is not — which is the bug.
+drop table if exists public.df20_profanity;
+drop function if exists public.df20_name_words(text);
+drop function if exists public.df20_name_squash(text);
+drop function if exists public.df20_name_leet(text);
+
+-- ── both directions, asserted ─────────────────────────────────────────────
+do $$
+declare v_bad text[] := '{}'; w text;
+begin
+  foreach w in array array[
+    'fuck','FUCK','f.u.c.k','f u c k','fuuuck','a_s_s','sh1t','$hit','4ss',
+    'fuckface','motherfucker','bitch','wanker','n1gger','cunt','big_ass',
+    'BigT1ts','a55hole'
+  ] loop
+    if not public.df20_has_bad_word(w) then
+      v_bad := v_bad || ('should be blocked: ' || w); end if;
+  end loop;
+
+  foreach w in array array[
+    'Cassandra','Scunthorpe','Hitchcock','Middlesex','Montenegro','raccoon',
+    'among','analysis','canal','Dickens','Titus','classic','assassin',
+    'peacock','bassist','cocktail','shiitake','Essex','Sussex','grape',
+    'scrape','spoon','harpoon','button','butter','accumulate','circumstance',
+    'Uranus','mongoose','despicable','scatter','proof','Wang','Mason','Logan',
+    'ok_name1','The House'
+  ] loop
+    if public.df20_has_bad_word(w) then
+      v_bad := v_bad || ('ordinary name wrongly blocked: ' || w); end if;
+  end loop;
+
+  -- the two entry points must now agree, which was the whole point
+  if public.df20_handle_problem('fuck_this') is distinct from 'explicit'
+    then v_bad := v_bad || 'handle validator disagrees with the trigger'; end if;
+  if public.df20_handle_problem('classic') is not null
+    then v_bad := v_bad || 'handle validator rejects an innocent name'; end if;
+
+  if coalesce(array_length(v_bad,1),0) > 0 then
+    raise exception E'DF20_WORD_FILTER_FAILED\n  %', array_to_string(v_bad, E'\n  ');
+  end if;
+  raise notice 'one word filter: % terms, % allowed, both entry points agree',
+    (select count(*) from public.blocked_handle_words),
+    (select count(*) from public.allowed_handle_words);
+end $$;
+
+-- ─────────── 0067_quick_play_cap.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · 0067 · Quick Play: three a day free, unlimited on premium
+--
+-- ENFORCED IN create_solo_room, NOT THE UI. The RPC is reachable with curl
+-- and the anon key is public, so a client-side count is decoration. The old
+-- five-argument form is DROPPED rather than left beside the new one, because
+-- a signature without p_device_key bypasses the cap entirely.
+--
+-- WHAT IDENTIFIES A PLAYER. 97% of rooms are created anonymously, so there is
+-- usually no account to count against. The cap keys on a device key stamped
+-- into an httpOnly cookie — the same arrangement the audience vote uses, with
+-- the same honest limit: clearing cookies gets you three more. Signed in it
+-- keys on the account, which cookie-clearing cannot dodge.
+--
+-- MISSING KEY MEANS ALLOWED, which on its own is a free bypass — just omit
+-- it. So solo rooms are created through /api/solo/create, which reads and
+-- stamps the cookie SERVER-SIDE so the key is not the caller's to withhold,
+-- and applies a loose per-IP backstop for anyone calling the RPC directly
+-- with no cookie at all. Allowing the keyless case remains right at the SQL
+-- layer: refusing a first-time player over a cookie that has not been issued
+-- yet is the worst possible trade.
+--
+-- WHY IT IS SOFT. Quick Play exists to rescue the ~1 room in 4 that never
+-- finds a second player. A hostile gate on it would cost more than it earns,
+-- so three is enough to decide whether you like the game, two-player rooms
+-- stay unlimited, and the message says so.
+--
+-- Also exposes lots.id from df20_bot_turn, so the route can budget one LLM
+-- call per CARD instead of per turn: "do I want this" is asked once, and the
+-- raises after it are arithmetic the heuristic does for free. ~25 calls a
+-- draft becomes ~10.
+--
+-- Re-runnable.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- Applied live on 2026-09-20; see git history for the full bodies of
+-- df20_solo_quota, create_solo_room (6-arg) and df20_bot_turn.
+alter table public.rooms add column if not exists solo_key text;
+
+comment on column public.rooms.solo_key is
+  'Who a Quick Play room counts against: profile uuid when signed in, else '
+  'the server-issued device key. Null for two-player rooms.';
+
+create index if not exists rooms_solo_key_day_idx
+  on public.rooms (solo_key, created_at) where is_solo;
+
+do $$
+begin
+  if to_regprocedure('public.df20_solo_quota(text)') is null then
+    raise exception 'df20_solo_quota missing'; end if;
+  if to_regprocedure('public.create_solo_room(text,text,uuid,int,int,text)') is null then
+    raise exception 'create_solo_room is not the 6-arg capped form'; end if;
+  if to_regprocedure('public.create_solo_room(text,text,uuid,int,int)') is not null then
+    raise exception 'the uncapped 5-arg create_solo_room still exists'; end if;
+  raise notice 'quick play cap in place';
+end $$;
+
 -- ─────────── 0065_restore_force_or_take.sql ───────────
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- DraftFor20 · 0065 · restore Force-or-Take, and a tripwire so it stays
+-- DraftFor20 · 0065 · Force-or-Take, restored and made the last word
 --
--- 0055 was applied and working, and something overwrote it. bid_events dates
--- the regression exactly: 'offer_forced' fired 37 times on 6 Sep and 92 on
--- 7 Sep, then STOPPED DEAD on 8 Sep. Over the same twelve days 'discard' went
--- from 0/day to 200-450/day. The columns (roster_entries.forced, lots.forced)
--- and df20_force_lot() were all still present — only offer_decide and
--- expire_turn had lost their force branch, which is the signature of one of
--- them being restated from a pre-0055 copy and applied afterwards.
+-- THIS HAS NOW BEEN LOST TWICE. First on 8 Sep, unnoticed for twelve days,
+-- which killed ~550 drafts. Restored 20 Sep; gone again within two hours.
 --
--- 0055's own header predicted it:
---   "AFTER 0041_allow_broke, because it restates offer_decide and expire_turn
---    from that file. Swap the two and the Force branch is silently
---    overwritten by the version that has no Force in it."
+-- The cause is structural, not careless. FOUR files define offer_decide:
+--   0005_rpc.sql              no force
+--   0021_timer.sql            no force
+--   0041_allow_broke.sql      no force
+--   0055_force_or_take.sql    force
+-- Three of the four delete the branch. Any one applied after 0055 — a bundle
+-- run in the wrong order, someone re-applying a single file, two people
+-- numbering from the same point — puts the game back where a broke player
+-- with slots owed and a full opponent has no legal move, and their draft can
+-- never finish.
 --
--- WHAT IT COST, measured: of rooms created since 8 Sep, those that hit a
--- discard completed 10.4% of the time. Those that did not completed 74.4%.
--- 616 rooms hit it in twelve days; roughly 550 could never finish, because a
--- broke player with slots owed and a full opponent had no legal move that
--- filled a slot — the card was thrown away and another dealt, forever.
+-- 0060 asserted the branch existed and failed loudly. Not enough: it catches
+-- the bundle and nothing else. So this file RESTORES rather than asserts. It
+-- is generated from 0055 and must run LAST, after every file that could
+-- overwrite it. Re-running it is always safe and always correct, which is the
+-- property an assertion does not have.
 --
--- This file re-applies the 0055 bodies verbatim and then ASSERTS them. The
--- assertion is the point: a comment did not stop this happening, so the
--- bundle now fails loudly instead of quietly losing the branch again.
+-- If you add a fifth definer of offer_decide, put the force branch in it or
+-- move this file after it. There is no third option.
 --
--- MUST RUN AFTER 0041_allow_broke AND 0055_force_or_take. Re-runnable.
+-- Re-runnable. MUST BE LAST.
 -- ═══════════════════════════════════════════════════════════════════════════
 
--- The bodies are identical to 0055_force_or_take.sql; see that file. Rather
--- than a third copy that can drift, this migration asserts the live state and
--- tells you to re-run 0055 if it is wrong.
-do $$
-declare v_bad text[] := '{}';
+create or replace function public.offer_decide(p_code text, p_token uuid, p_choice text)
+returns jsonb language plpgsql security definer
+set search_path = public, pg_temp as $$
+declare
+  v_room public.rooms; v_me public.players; v_lot public.lots;
+  v_opp uuid; v_max int; v_open int;
+  v_can_take boolean; v_can_give boolean; v_can_force boolean;
 begin
-  if to_regprocedure('public.df20_force_lot(uuid,uuid)') is null then
-    v_bad := v_bad || 'df20_force_lot is missing — apply 0055_force_or_take first';
-  end if;
-  if not exists (select 1 from information_schema.columns
-                  where table_schema='public' and table_name='roster_entries'
-                    and column_name='forced') then
-    v_bad := v_bad || 'roster_entries.forced is missing — apply 0055 first';
-  end if;
-  if pg_get_functiondef(to_regprocedure('public.offer_decide(text,uuid,text)')) !~ 'force' then
-    v_bad := v_bad || 'offer_decide has NO force branch — 0055 was overwritten; re-apply it';
-  end if;
-  if pg_get_functiondef(to_regprocedure('public.expire_turn(text)')) !~ 'force' then
-    v_bad := v_bad || 'expire_turn has NO force branch — 0055 was overwritten; re-apply it';
+  select * into v_room from public.rooms where code = upper(btrim(p_code)) for update;
+  if not found then raise exception 'DF20_NO_ROOM'; end if;
+  select * into v_me from public.players
+   where room_id = v_room.id and session_token = p_token;
+  if not found then raise exception 'DF20_BAD_TOKEN'; end if;
+
+  select * into v_lot from public.lots
+   where room_id = v_room.id and status = 'offered' for update;
+  if not found then raise exception 'DF20_NO_LIVE_LOT'; end if;
+  if v_room.phase <> 'offering' then raise exception 'DF20_WRONG_PHASE'; end if;
+  if v_lot.opener_player_id is distinct from v_me.id
+    then raise exception 'DF20_NOT_YOUR_TURN'; end if;
+
+  v_opp  := public.df20_opponent(v_room.id, v_me.id);
+  v_open := public.df20_open_slots(v_room.id, v_me.id);
+  v_max  := public.df20_max_legal_bid(v_me.bankroll_cents, v_room.min_bid_cents,
+                                      v_open, v_room.allow_broke);
+  v_can_take  := v_max >= v_room.min_bid_cents and v_open > 0;
+  v_can_give  := public.df20_open_slots(v_room.id, v_opp) > 0
+                 and v_me.gives_used < v_room.gives_per_player;
+  -- FORCE is exactly the case Take is not: slots owed, money short.
+  v_can_force := v_open > 0 and not v_can_take;
+
+  if p_choice = 'take' then
+    if not v_can_take then raise exception 'DF20_CANNOT_AFFORD'; end if;
+
+    insert into public.bid_events (room_id, lot_id, player_id, action, amount_cents, turn_seq)
+    values (v_room.id, v_lot.id, v_me.id, 'offer_take', v_room.min_bid_cents, v_lot.turn_seq);
+
+    if public.df20_can_outbid(v_room.id, v_opp, v_room.min_bid_cents) then
+      update public.lots
+         set status = 'bidding', on_the_clock_player_id = v_opp,
+             turn_expires_at = public.df20_turn_deadline(v_room.timer_seconds),
+             turn_seq = turn_seq + 1
+       where id = v_lot.id;
+      update public.rooms set phase = 'bidding' where id = v_room.id;
+    else
+      perform public.df20_resolve_lot(v_lot.id, 'won');
+    end if;
+
+  elsif p_choice = 'give' then
+    if public.df20_open_slots(v_room.id, v_opp) <= 0 then raise exception 'DF20_THEY_ARE_FULL'; end if;
+    if v_me.gives_used >= v_room.gives_per_player then raise exception 'DF20_NO_GIVES_LEFT'; end if;
+    perform public.df20_resolve_gift(v_lot.id, v_me.id);
+
+  elsif p_choice = 'force' then
+    -- Never a way to dodge paying: if Take is available, Take is the price.
+    if v_can_take then raise exception 'DF20_MUST_TAKE_OR_GIVE'; end if;
+    if v_open <= 0 then raise exception 'DF20_ROSTER_FULL'; end if;
+    perform public.df20_force_lot(v_lot.id, v_me.id);
+
+  elsif p_choice = 'discard' then
+    -- only when there is genuinely nothing to do with this card
+    if v_can_take or v_can_give or v_can_force then raise exception 'DF20_MUST_TAKE_OR_GIVE'; end if;
+    perform public.df20_discard_lot(v_lot.id);
+
+  else
+    raise exception 'DF20_BAD_CHOICE';
   end if;
 
-  if coalesce(array_length(v_bad,1),0) > 0 then
-    raise exception E'DF20_FORCE_OR_TAKE_MISSING\n  %\n\n  A broke player with slots owed and a full opponent has no legal move.\n  Their draft can never complete. See 0055_force_or_take.sql.',
-      array_to_string(v_bad, E'\n  ');
+  perform public.df20_touch(v_room.id);
+  perform public.df20_broadcast(v_room.id);
+  return public.df20_public_state(v_room.id);
+end $$;
+
+create or replace function public.expire_turn(p_code text)
+returns jsonb language plpgsql security definer
+set search_path = public, pg_temp as $$
+declare v_room public.rooms; v_lot public.lots; v_opener public.players;
+        v_opp uuid; v_max int; v_open int;
+begin
+  select * into v_room from public.rooms where code = upper(btrim(p_code)) for update;
+  if not found then raise exception 'DF20_NO_ROOM'; end if;
+
+  select * into v_lot from public.lots
+   where room_id = v_room.id and status in ('offered','bidding') for update;
+  if not found then return public.df20_public_state(v_room.id); end if;
+  if v_lot.turn_expires_at is null or now() <= v_lot.turn_expires_at then
+    return public.df20_public_state(v_room.id);          -- not expired: no-op
   end if;
-  raise notice 'Force-or-Take present in offer_decide and expire_turn';
+
+  if v_lot.status = 'offered' then
+    select * into v_opener from public.players where id = v_lot.opener_player_id;
+    v_open := public.df20_open_slots(v_room.id, v_opener.id);
+    v_max  := public.df20_max_legal_bid(v_opener.bankroll_cents, v_room.min_bid_cents,
+                                        v_open, v_room.allow_broke);
+    if v_max >= v_room.min_bid_cents and v_open > 0 then
+      insert into public.bid_events (room_id, lot_id, player_id, action, amount_cents, turn_seq)
+      values (v_room.id, v_lot.id, v_opener.id, 'offer_take', v_room.min_bid_cents, v_lot.turn_seq);
+
+      v_opp := public.df20_opponent(v_room.id, v_opener.id);
+      if public.df20_can_outbid(v_room.id, v_opp, v_room.min_bid_cents) then
+        update public.lots
+           set status = 'bidding', on_the_clock_player_id = v_opp,
+               turn_expires_at = public.df20_turn_deadline(v_room.timer_seconds),
+               turn_seq = turn_seq + 1
+         where id = v_lot.id;
+        update public.rooms set phase = 'bidding' where id = v_room.id;
+      else
+        perform public.df20_resolve_lot(v_lot.id, 'won');
+      end if;
+    elsif v_open > 0 then
+      perform public.df20_force_lot(v_lot.id, v_opener.id);
+    else
+      perform public.df20_discard_lot(v_lot.id);
+    end if;
+  else
+    insert into public.bid_events (room_id, lot_id, player_id, action, amount_cents, turn_seq)
+    values (v_room.id, v_lot.id, v_lot.on_the_clock_player_id, 'timeout_pass',
+            v_lot.current_bid_cents, v_lot.turn_seq);
+    perform public.df20_resolve_lot(v_lot.id, 'won');
+  end if;
+
+  perform public.df20_touch(v_room.id);
+  perform public.df20_broadcast(v_room.id);
+  return public.df20_public_state(v_room.id);
+end $$;
+
+grant execute on function public.offer_decide(text, uuid, text) to anon, authenticated;
+grant execute on function public.expire_turn(text)              to anon, authenticated;
+
+do $$
+begin
+  if pg_get_functiondef(to_regprocedure('public.offer_decide(text,uuid,text)')) !~ 'force'
+    then raise exception 'offer_decide has no force branch after 0065'; end if;
+  if pg_get_functiondef(to_regprocedure('public.expire_turn(text)')) !~ 'force'
+    then raise exception 'expire_turn has no force branch after 0065'; end if;
+  raise notice 'Force-or-Take restored (0065 ran last, as it must)';
 end $$;
 
 do $$

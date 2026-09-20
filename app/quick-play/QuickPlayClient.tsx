@@ -25,11 +25,32 @@ function QuickPlay() {
   const [roster, setRoster] = useState(5);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [quota, setQuota] = useState<
+    { used: number; limit: number | null; unlimited: boolean; premium: boolean } | null
+  >(null);
 
   useEffect(() => {
     void (async () => {
       const { data } = await supabaseBrowser().rpc("list_free_categories");
       setShelf((data as Shelf[]) ?? []);
+    })();
+  }, []);
+
+  /* The device key is issued and stored by the server in an httpOnly cookie;
+     this only reads back which one we hold so the quota can be shown before
+     the button is pressed. Being told you are out of games after filling in
+     the form is worse than being told before. */
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/solo/key");
+        const d = (await res.json()) as { key?: string };
+        if (!d.key) return;
+        const { data } = await supabaseBrowser().rpc("df20_solo_quota", { p_key: d.key });
+        setQuota(data as typeof quota);
+      } catch {
+        /* no quota shown is fine: create_solo_room still enforces it */
+      }
     })();
   }, []);
 
@@ -55,16 +76,32 @@ function QuickPlay() {
     if (!name.trim() || nameError) return;
     setBusy(true);
     setError(null);
-    const { data, error: e } = await supabaseBrowser().rpc("create_solo_room", {
-      p_host_name: name.trim(),
-      p_pool_source: picked ? "library" : "builtin",
-      p_pool_ref: picked,
-      p_roster_size: roster,
-      p_timer_seconds: 20,
+    /* Through the route, not the RPC: the device key the cap counts against
+       has to be stamped server-side, or omitting it is a free bypass. */
+    const {
+      data: { session },
+    } = await supabaseBrowser().auth.getSession();
+    const res = await fetch("/api/solo/create", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      },
+      body: JSON.stringify({
+        hostName: name.trim(),
+        poolSource: picked ? "library" : "builtin",
+        poolRef: picked,
+        rosterSize: roster,
+        timerSeconds: 20,
+      }),
     });
+    const payload = (await res.json()) as Record<string, unknown>;
     setBusy(false);
-    if (e) { setError(readableError(e.message)); return; }
-    const d = data as {
+    if (!res.ok) {
+      setError(readableError(String(payload.message ?? "")));
+      return;
+    }
+    const d = payload as unknown as {
       room_id: string; code: string; player_id: string;
       session_token: string; seat: number; bot_name: string;
     };
@@ -84,6 +121,29 @@ function QuickPlay() {
           One draft against The House. No second player, no waiting, no
           account — about ten minutes.
         </p>
+
+        {quota && !quota.unlimited && quota.limit !== null ? (
+          <p className="mt-3 border px-3 py-2 text-[0.8125rem] leading-relaxed text-muted rule">
+            {quota.used >= quota.limit ? (
+              <>
+                <span className="type-label text-coral">that&rsquo;s today&rsquo;s three</span>{" "}
+                Solo drafts reset at midnight. Two-player rooms are unlimited and
+                always free —{" "}
+                <a href="/new" className="text-ink underline">start one</a>. Premium
+                removes the cap:{" "}
+                <a href="/pricing" className="text-ink underline">see pricing</a>.
+              </>
+            ) : (
+              <>
+                <span className="type-label text-gold">
+                  {quota.limit - quota.used} of {quota.limit} left today
+                </span>{" "}
+                Solo drafts are capped on the free tier. Playing someone else is
+                unlimited.
+              </>
+            )}
+          </p>
+        ) : null}
 
         <div className="mt-7 flex flex-col gap-5">
           <Field
@@ -150,7 +210,11 @@ function QuickPlay() {
           <Button
             variant="primary"
             size="lg"
-            disabled={busy || !name.trim() || !!nameError}
+            disabled={
+              busy || !name.trim() || !!nameError ||
+              Boolean(quota && !quota.unlimited && quota.limit !== null &&
+                      quota.used >= quota.limit)
+            }
             onClick={() => void go()}
           >
             {busy ? "Dealing…" : "Play The House"}
