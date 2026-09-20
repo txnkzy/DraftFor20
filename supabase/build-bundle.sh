@@ -31,6 +31,10 @@ FILES=(
   # df20_clean_logo_url outage, a caller applied before its dependency.
   0055_force_or_take
   0057_usernames_and_leaderboard
+  # AFTER 0057: the profanity trigger guards profiles.handle, and that column
+  # only becomes user-chosen in 0057. Applied before it, the trigger would
+  # reference handle_chosen before the column exists.
+  0058_clean_names
 )
 
 {

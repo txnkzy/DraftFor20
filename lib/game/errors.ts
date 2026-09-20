@@ -27,6 +27,9 @@ const MESSAGES: Record<string, string> = {
   DF20_MUST_TAKE_OR_GIVE: "You can still take this one or hand it over.",
   DF20_BAD_CHOICE: "That isn't one of the options.",
   DF20_BAD_NAME: "Pick a name, 24 characters or fewer.",
+  DF20_NAME_TAKEN:
+    "The other player is already using that name. Pick a different one.",
+  DF20_BAD_WORD: "Keep it PG — pick a different name.",
   DF20_TITLE_TOO_LONG: "Title caps at 60 characters.",
   DF20_BAD_BANKROLL: "That bankroll isn't valid.",
   DF20_BAD_MIN_BID: "That minimum bid isn't valid.",
