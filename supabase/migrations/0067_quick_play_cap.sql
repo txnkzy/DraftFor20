@@ -48,6 +48,48 @@ comment on column public.rooms.solo_key is
 create index if not exists rooms_solo_key_day_idx
   on public.rooms (solo_key, created_at) where is_solo;
 
+-- ── what the Quick Play screen asks before it offers a game ───────────────
+-- WAS ONLY EVER IN THE DATABASE. The column and index above were in this
+-- file, and the check below ASSERTS this function exists — but nothing here
+-- ever created it. It was written by hand in the SQL editor, so a database
+-- rebuilt from the bundle got a solo_key column, an index on it, and no way
+-- to answer "have you used your three?" — which QuickPlayClient asks on
+-- mount. Captured from the live definition.
+create or replace function public.df20_solo_quota(p_key text)
+returns jsonb language plpgsql stable security definer
+set search_path = public, pg_temp as $$
+declare v_uid uuid; v_key text; v_used int; v_premium boolean; v_limit int := 3;
+begin
+  v_uid := (select auth.uid());
+  v_premium := v_uid is not null and public.df20_premium_active(v_uid);
+  -- an account beats a cookie: it is the identity that cannot be cleared
+  v_key := coalesce(v_uid::text, nullif(btrim(coalesce(p_key,'')), ''));
+
+  if v_premium then
+    return jsonb_build_object('allowed', true, 'unlimited', true,
+                              'used', 0, 'limit', null, 'premium', true);
+  end if;
+  if v_key is null then
+    -- no key at all: let it through rather than block a first-time player
+    -- over a cookie that has not been issued yet
+    return jsonb_build_object('allowed', true, 'unlimited', false,
+                              'used', 0, 'limit', v_limit, 'premium', false);
+  end if;
+
+  select count(*) into v_used
+    from public.rooms
+   where is_solo and solo_key = v_key
+     and created_at >= date_trunc('day', now());
+
+  return jsonb_build_object(
+    'allowed', v_used < v_limit, 'unlimited', false,
+    'used', v_used, 'limit', v_limit, 'premium', false,
+    'signed_in', v_uid is not null);
+end $$;
+revoke all on function public.df20_solo_quota(text) from public;
+grant execute on function public.df20_solo_quota(text) to anon, authenticated;
+
+
 do $$
 begin
   if to_regprocedure('public.df20_solo_quota(text)') is null then

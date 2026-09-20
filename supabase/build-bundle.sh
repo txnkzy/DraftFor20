@@ -19,6 +19,13 @@ FILES=(
   0043_item_images 0044_onepiece 0045_dev_library_preview 0046_anime_categories
   0047_library_genres 0048_revoke_public_execute 0049_sports_categories
   0050_brand_categories 0051_library_pictures
+  # NEVER REGISTERED until 20 Sep. All four were applied to the live database
+  # by hand and left out of the bundle, so APPLY_V7.sql built a database
+  # missing the activity funnel, the live-means-live sweep, the restored
+  # server grants and the billing detail. A migration that is not in this
+  # list does not exist as far as a fresh install is concerned.
+  0052_activity_funnel 0053_live_means_live 0054_restore_server_grants
+  0056_billing_detail
   # NUMBERED 0041 BUT IT RUNS LAST, deliberately. Two files carry that number
   # — 0041_allow_broke and 0041_profiles_grant_hardening — because two people
   # numbered from 0040 at the same time. Ordering by the number would apply a
@@ -46,6 +53,21 @@ FILES=(
   # not exist yet, then delete the one 0063 is about to create.
   0066_one_word_filter
   0067_quick_play_cap
+  # THE TIMESTAMPED FILES. A second naming scheme arrived with the Supabase
+  # CLI; they sort after the numbered ones by name, which is also the order
+  # they were written in.
+  #
+  # growth_metrics AFTER 0062_daily_finished: both define admin_activity and
+  # the later one wins. The live database is running growth_metrics' version,
+  # so this order is what reproduces production rather than quietly reverting
+  # the admin dashboard to an older query.
+  20260920041909_growth_metrics
+  20260920134132_room_scouting_and_head_to_head
+  # AFTER 0041_allow_broke: it restates df20_public_state to add the derived
+  # rematch_code. Run it before and the field disappears, and "Run it back"
+  # goes back to being a button that cannot find the room it made.
+  20260920134315_rematch
+  20260920135142_football_draft_recognisable
   # ABSOLUTELY LAST. Four files define offer_decide and three of them have no
   # force branch, so whichever runs last wins. This one restores it. Lost
   # twice already — 8 Sep (12 days, ~550 dead drafts) and again on 20 Sep

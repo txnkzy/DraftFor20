@@ -11017,6 +11017,561 @@ begin
   end loop;
 end $$;
 
+-- ─────────── 0052_activity_funnel.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · 0052 · what "rooms this week" actually counts
+--
+-- A room row exists the moment somebody presses Create. Nobody has joined it,
+-- nothing has been drafted, and most of them never will be — a code is handed
+-- out, the second player never arrives, and the row sits there. The console
+-- counted those the same as a finished draft and labelled the total "rooms
+-- this week", which reads as plays. Five hundred creations and six finished
+-- drafts are very different weeks and looked identical.
+--
+-- Nothing here changes what is recorded. It reports the funnel that was
+-- always in the data: created → a second player arrived → the draft started →
+-- it finished. A number is only misleading next to the wrong label, so this
+-- puts the honest denominators beside it.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+create or replace function public.admin_activity()
+returns jsonb language plpgsql stable security definer
+set search_path = public, pg_temp as $$
+declare v_since timestamptz := now() - interval '7 days';
+begin
+  if not public.df20_is_admin() then raise exception 'DF20_NOT_AUTHORISED'; end if;
+
+  return jsonb_build_object(
+    'rooms', jsonb_build_object(
+      'total',  (select count(*) from public.rooms where code is not null),
+      'today',  (select count(*) from public.rooms
+                  where code is not null and created_at >= date_trunc('day', now())),
+      'week',   (select count(*) from public.rooms
+                  where code is not null and created_at >= v_since),
+      'live',   (select count(*) from public.rooms where status = 'live'),
+      'complete',(select count(*) from public.rooms where status = 'complete'),
+
+      -- ── the same seven days, narrowed at each step ────────────────────
+      -- A room that never found a second player was never a game. Counting
+      -- the drop-off is the only way to read the top number honestly.
+      'week_joined', (select count(*) from public.rooms r
+                       where r.code is not null and r.created_at >= v_since
+                         and (select count(*) from public.players p
+                               where p.room_id = r.id) >= 2),
+      'week_started', (select count(*) from public.rooms
+                        where code is not null and created_at >= v_since
+                          and started_at is not null),
+      'week_complete', (select count(*) from public.rooms
+                         where code is not null and created_at >= v_since
+                           and status = 'complete'),
+      -- created, never joined by anyone but the host, and now stale
+      'week_empty', (select count(*) from public.rooms r
+                      where r.code is not null and r.created_at >= v_since
+                        and (select count(*) from public.players p
+                              where p.room_id = r.id) < 2)),
+
+    'daily', coalesce((
+      select jsonb_agg(jsonb_build_object('day', d::date, 'rooms', n) order by d)
+        from (select g.d, (select count(*) from public.rooms r
+                            where r.code is not null
+                              and r.created_at >= g.d and r.created_at < g.d + interval '1 day') as n
+                from generate_series(date_trunc('day', now()) - interval '13 days',
+                                     date_trunc('day', now()), interval '1 day') g(d)) s),
+      '[]'::jsonb),
+
+    'categories', jsonb_build_object(
+      'football', (select count(*) from public.rooms
+                    where code is not null and category_name = 'Football Draft'),
+      'other_library', (select count(*) from public.rooms
+                         where code is not null and pool_source in ('builtin','library')
+                           and coalesce(category_name,'') <> 'Football Draft'),
+      'wikipedia', (select count(*) from public.rooms
+                     where code is not null and pool_source = 'wikipedia'),
+      'manual', (select count(*) from public.rooms
+                  where code is not null and pool_source = 'manual'),
+      'saved', (select count(*) from public.rooms
+                 where code is not null and pool_source = 'saved')),
+
+    'modes', jsonb_build_object(
+      'standard', (select count(*) from public.rooms
+                    where code is not null and content_mode = 'standard'),
+      'creator', (select count(*) from public.rooms
+                   where code is not null and content_mode = 'creator')),
+
+    'duration', (
+      select jsonb_build_object(
+               'sample', count(*),
+               'avg_seconds', round(avg(secs)),
+               'median_seconds', round(percentile_cont(0.5) within group (order by secs)))
+        from (select extract(epoch from (completed_at - started_at)) as secs
+                from public.rooms
+               where status = 'complete'
+                 and started_at is not null and completed_at is not null
+                 and completed_at > started_at
+                 and completed_at - started_at < interval '12 hours') d),
+
+    'library', jsonb_build_object(
+      'public', (select count(*) from public.category_library),
+      'pending', (select count(*) from public.rooms where library_optin_state = 'pending'),
+      'saved_decks', (select count(*) from public.user_categories)),
+
+    'audience', jsonb_build_object(
+      'votes', (select count(*) from public.audience_votes),
+      'rooms_voted_on', (select count(distinct room_id) from public.audience_votes)),
+
+    'premium', jsonb_build_object(
+      'active', (select count(*) from public.profiles where premium_until > now()),
+      'by_source', coalesce((select jsonb_object_agg(coalesce(premium_source,'none'), n)
+                               from (select premium_source, count(*) as n
+                                       from public.profiles
+                                      where premium_until > now()
+                                      group by premium_source) s), '{}'::jsonb)));
+end $$;
+grant execute on function public.admin_activity() to authenticated;
+
+-- ─────────── 0053_live_means_live.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · 0053 · finished drafts, and a "live now" that means now
+--
+-- TWO NUMBERS WERE LYING BY ACCUMULATION.
+--
+-- 1. The headline counted rooms CREATED. A code nobody used counted the same
+--    as a finished draft. The headline is now finished drafts; creation stays
+--    as the funnel's denominator, where it belongs.
+--
+-- 2. "live now" counted `status = 'live'`, and nothing ever moves a room out
+--    of that state on its own. `abandoned` is set only by leave_room, an
+--    explicit button. Two people who close the tab mid-draft leave the row
+--    'live' until the 90-day purge deletes it — so the figure was every
+--    unfinished draft of the last ninety days, not the games running right
+--    now. At 10:30pm on a Thursday that reads as a busy site.
+--
+-- Rooms carry no activity timestamp — df20_touch bumps an integer version,
+-- not a time — so recency comes from bid_events, which gets a row for every
+-- reveal, bid, pass and win, and is already indexed by (room_id, id). A room
+-- with one in the last fifteen minutes has somebody at the keyboard. The rest
+-- are reported separately as idle rather than folded into the same tile.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+create or replace function public.admin_activity()
+returns jsonb language plpgsql stable security definer
+set search_path = public, pg_temp as $$
+declare v_since timestamptz := now() - interval '7 days';
+begin
+  if not public.df20_is_admin() then raise exception 'DF20_NOT_AUTHORISED'; end if;
+
+  return jsonb_build_object(
+    'rooms', jsonb_build_object(
+      'total',  (select count(*) from public.rooms where code is not null),
+      'today',  (select count(*) from public.rooms
+                  where code is not null and created_at >= date_trunc('day', now())),
+      'week',   (select count(*) from public.rooms
+                  where code is not null and created_at >= v_since),
+      'complete',(select count(*) from public.rooms where status = 'complete'),
+
+      -- ── the headline: drafts that actually FINISHED ───────────────────
+      'finished_today', (select count(*) from public.rooms
+                          where status = 'complete'
+                            and completed_at >= date_trunc('day', now())),
+      'finished_week',  (select count(*) from public.rooms
+                          where status = 'complete' and completed_at >= v_since),
+
+      -- ── live means live ───────────────────────────────────────────────
+      -- Somebody has touched this draft in the last fifteen minutes. A turn
+      -- is fifteen seconds by default and five minutes at the longest, so a
+      -- game in progress cannot be quiet for that long; a game whose players
+      -- shut the laptop goes quiet immediately.
+      'live', (select count(*) from public.rooms r
+                where r.status = 'live'
+                  and exists (select 1 from public.bid_events e
+                               where e.room_id = r.id
+                                 and e.created_at > now() - interval '15 minutes')),
+
+      -- started, never finished, nobody home. Not concurrency — backlog.
+      'live_idle', (select count(*) from public.rooms r
+                     where r.status = 'live'
+                       and not exists (select 1 from public.bid_events e
+                                        where e.room_id = r.id
+                                          and e.created_at > now() - interval '15 minutes')),
+
+      -- ── the same seven days, narrowed at each step ────────────────────
+      -- A room that never found a second player was never a game. Counting
+      -- the drop-off is the only way to read the top number honestly.
+      'week_joined', (select count(*) from public.rooms r
+                       where r.code is not null and r.created_at >= v_since
+                         and (select count(*) from public.players p
+                               where p.room_id = r.id) >= 2),
+      'week_started', (select count(*) from public.rooms
+                        where code is not null and created_at >= v_since
+                          and started_at is not null),
+      'week_complete', (select count(*) from public.rooms
+                         where code is not null and created_at >= v_since
+                           and status = 'complete'),
+      -- created, never joined by anyone but the host, and now stale
+      'week_empty', (select count(*) from public.rooms r
+                      where r.code is not null and r.created_at >= v_since
+                        and (select count(*) from public.players p
+                              where p.room_id = r.id) < 2)),
+
+    'daily', coalesce((
+      select jsonb_agg(jsonb_build_object('day', d::date, 'rooms', n) order by d)
+        from (select g.d, (select count(*) from public.rooms r
+                            where r.code is not null
+                              and r.created_at >= g.d and r.created_at < g.d + interval '1 day') as n
+                from generate_series(date_trunc('day', now()) - interval '13 days',
+                                     date_trunc('day', now()), interval '1 day') g(d)) s),
+      '[]'::jsonb),
+
+    'categories', jsonb_build_object(
+      'football', (select count(*) from public.rooms
+                    where code is not null and category_name = 'Football Draft'),
+      'other_library', (select count(*) from public.rooms
+                         where code is not null and pool_source in ('builtin','library')
+                           and coalesce(category_name,'') <> 'Football Draft'),
+      'wikipedia', (select count(*) from public.rooms
+                     where code is not null and pool_source = 'wikipedia'),
+      'manual', (select count(*) from public.rooms
+                  where code is not null and pool_source = 'manual'),
+      'saved', (select count(*) from public.rooms
+                 where code is not null and pool_source = 'saved')),
+
+    'modes', jsonb_build_object(
+      'standard', (select count(*) from public.rooms
+                    where code is not null and content_mode = 'standard'),
+      'creator', (select count(*) from public.rooms
+                   where code is not null and content_mode = 'creator')),
+
+    'duration', (
+      select jsonb_build_object(
+               'sample', count(*),
+               'avg_seconds', round(avg(secs)),
+               'median_seconds', round(percentile_cont(0.5) within group (order by secs)))
+        from (select extract(epoch from (completed_at - started_at)) as secs
+                from public.rooms
+               where status = 'complete'
+                 and started_at is not null and completed_at is not null
+                 and completed_at > started_at
+                 and completed_at - started_at < interval '12 hours') d),
+
+    'library', jsonb_build_object(
+      'public', (select count(*) from public.category_library),
+      'pending', (select count(*) from public.rooms where library_optin_state = 'pending'),
+      'saved_decks', (select count(*) from public.user_categories)),
+
+    'audience', jsonb_build_object(
+      'votes', (select count(*) from public.audience_votes),
+      'rooms_voted_on', (select count(distinct room_id) from public.audience_votes)),
+
+    'premium', jsonb_build_object(
+      'active', (select count(*) from public.profiles where premium_until > now()),
+      'by_source', coalesce((select jsonb_object_agg(coalesce(premium_source,'none'), n)
+                               from (select premium_source, count(*) as n
+                                       from public.profiles
+                                      where premium_until > now()
+                                      group by premium_source) s), '{}'::jsonb)));
+end $$;
+grant execute on function public.admin_activity() to authenticated;
+
+-- ─────────── 0054_restore_server_grants.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · 0054 · give the server's own functions back their EXECUTE
+--
+-- 0048 was right. Postgres grants EXECUTE to PUBLIC by default, every
+-- `revoke ... from anon, authenticated` in this repo had been a no-op, and
+-- 100 of 103 functions were callable by anyone holding the publishable key.
+-- Revoking from PUBLIC and re-granting the 69 client-API functions closed a
+-- real hole and nothing here reopens it.
+--
+-- What it missed is that this app has a SECOND caller which also presents the
+-- publishable key: its own server routes. The webhook, the signup recorder,
+-- the Wikipedia cache writer and the rate limiter all run server-side with
+-- the anon key, because the README's rule is that the service-role key is
+-- never used. Those functions were classed as internal, so they were not
+-- re-granted — and they had been riding the default PUBLIC grant since they
+-- were written. They stopped working the moment 0048 was applied.
+--
+-- Observed, not theorised:
+--
+--   permission denied for function df20_apply_billing_event
+--
+-- returned to Stripe for a live £1 payment. The same revoke explains three
+-- other things that looked unrelated: no failure row was ever written
+-- (df20_log_billing_failure), signup signals recorded nothing for any account
+-- (df20_record_signup), and rate limiting has been failing OPEN on every
+-- surface, because lib/rateLimit.ts treats an error as "allow".
+--
+-- WHAT GUARDS THESE INSTEAD. The first six take a shared secret as their
+-- first argument and compare it against df20_config before doing anything;
+-- that comparison, not the grant, is the control, and it is the design these
+-- were written to. The last two carry no secret and are restored to exactly
+-- the reach they had before 0048: a caller can spend rate-limit budget, which
+-- is a nuisance, where the alternative is no rate limiting at all.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- ── grant by NAME, not by signature ───────────────────────────────────────
+-- Naming argument types here hard-codes a signature that a later migration
+-- changes: 0056 replaces df20_apply_billing_event with an arity carrying the
+-- amount, and a grant against the old one then fails on every re-run, taking
+-- the whole bundle with it. Looking up whatever exists keeps this replayable
+-- in any order, and covers the several arities of df20_cache_wikipedia too.
+do $$
+declare r record;
+begin
+  for r in
+    select p.oid::regprocedure as sig
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public'
+       and p.proname in (
+         -- billing: the webhook writes premium and records its own failures
+         'df20_apply_billing_event',
+         'df20_revoke_premium',
+         'df20_log_billing_failure',
+         'df20_billing_profile',
+         -- signup evidence, written by /api/auth/signup
+         'df20_record_signup',
+         -- the Wikipedia cache writer, every arity of it
+         'df20_cache_wikipedia')
+  loop
+    execute 'grant execute on function ' || r.sig || ' to anon';
+  end loop;
+end $$;
+
+-- ── the limiter itself. Denied, lib/rateLimit.ts allows everything. ───────
+grant execute on function public.df20_rate_limit(text, text, int, int) to anon;
+grant execute on function public.df20_external_budget(text) to anon;
+
+notify pgrst, 'reload schema';
+
+-- ─────────── 0056_billing_detail.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · 0056 · who paid, and how much
+--
+-- billing_events recorded THAT something happened and nothing about what. The
+-- console could say a pass was granted; it could not say to whom or for how
+-- much, so "did we make anything this month" was a question only Stripe could
+-- answer — and Stripe cannot say which DraftFor20 account a payment landed on.
+--
+-- Three columns and the join becomes possible. profile_id is written at the
+-- moment the event is MATCHED, so it names the account that actually received
+-- the access rather than an email looked up later and possibly changed since.
+--
+-- Amounts are stored in the settlement currency Stripe reports, with the code
+-- beside them. A $1 pass bought on a UK card settles as 100 usd while Stripe
+-- shows the buyer 77p; adding those two numbers together would be arithmetic
+-- on different things, so the totals below group by currency rather than
+-- pretending there is one.
+--
+-- The old overload is DROPPED rather than defaulted. A new argument with a
+-- DEFAULT leaves both signatures resolvable and makes positional calls
+-- ambiguous — the trap 0010 documents and 0041 had to work around already.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+alter table public.billing_events
+  add column if not exists profile_id   uuid references public.profiles(id) on delete set null,
+  add column if not exists amount_cents int,
+  add column if not exists currency     text;
+
+create index if not exists billing_events_profile_idx
+  on public.billing_events (profile_id) where profile_id is not null;
+
+do $$
+declare r record;
+begin
+  for r in
+    select p.oid::regprocedure as sig
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname = 'df20_apply_billing_event'
+  loop
+    execute 'drop function if exists ' || r.sig;
+  end loop;
+end $$;
+
+create or replace function public.df20_apply_billing_event(
+  p_secret          text,
+  p_event_id        text,
+  p_user_id         uuid,
+  p_customer_id     text,
+  p_subscription_id text,
+  p_status          text,
+  p_premium_until   timestamptz,
+  p_source          text,
+  p_extend_hours    int,
+  p_amount_cents    int,
+  p_currency        text
+) returns jsonb language plpgsql security definer
+set search_path = public, pg_temp as $BODY$
+
+declare v_expected text; v_id uuid; v_until timestamptz; v_rows int;
+begin
+  select value into v_expected from public.df20_config where key = 'billing_write_secret';
+  if v_expected is null or p_secret is null or p_secret <> v_expected then
+    raise exception 'DF20_NOT_AUTHORISED';
+  end if;
+
+  if p_source is not null and p_source not in
+     ('stripe_subscription','admin_grant','game_night_pass') then
+    raise exception 'DF20_BAD_SOURCE';
+  end if;
+
+  if p_user_id is not null then
+    select id into v_id from public.profiles where id = p_user_id;
+  end if;
+  if v_id is null and p_customer_id is not null then
+    select id into v_id from public.profiles where stripe_customer_id = p_customer_id;
+  end if;
+
+  -- Checkout carried a real account id but no profile row exists for it.
+  -- Create it: somebody has paid, and refusing to record that because a row
+  -- is missing is how money goes missing.
+  if v_id is null and p_user_id is not null
+     and exists (select 1 from auth.users u where u.id = p_user_id) then
+    insert into public.profiles (id, email, handle)
+    select u.id, u.email, public.df20_gen_handle()
+      from auth.users u where u.id = p_user_id
+    on conflict (id) do nothing;
+    select id into v_id from public.profiles where id = p_user_id;
+  end if;
+
+  if v_id is null then
+    -- genuinely cannot tell who paid. Record it so it surfaces in the console
+    -- instead of vanishing into a 200 nobody reads.
+    if p_event_id is not null then
+      insert into public.billing_events (event_id, kind, status, detail,
+                                         amount_cents, currency)
+      values (p_event_id, coalesce(p_source, 'stripe'), 'failed',
+              'no profile matched: user_id=' || coalesce(p_user_id::text, 'null')
+              || ' customer=' || coalesce(p_customer_id, 'null'),
+              p_amount_cents, lower(nullif(p_currency, '')))
+      on conflict (event_id) do update
+        set status = 'failed', detail = excluded.detail, processed_at = now();
+    end if;
+    return jsonb_build_object('matched', false);
+  end if;
+
+  if p_event_id is not null then
+    insert into public.billing_events (event_id, kind, profile_id,
+                                       amount_cents, currency)
+    values (p_event_id, coalesce(p_source, 'stripe'), v_id,
+            p_amount_cents, lower(nullif(p_currency, '')))
+    on conflict (event_id) do nothing;
+    get diagnostics v_rows = row_count;
+    if v_rows = 0 then
+      return jsonb_build_object('matched', true, 'duplicate', true);
+    end if;
+  end if;
+
+  if p_extend_hours is not null then
+    select greatest(coalesce(premium_until, now()), now())
+             + make_interval(hours => p_extend_hours)
+      into v_until from public.profiles where id = v_id;
+  else
+    v_until := p_premium_until;
+  end if;
+
+  update public.profiles
+     set premium_until          = coalesce(v_until, premium_until),
+         premium_source         = coalesce(p_source, premium_source),
+         subscription_status    = coalesce(p_status, subscription_status),
+         stripe_customer_id     = coalesce(p_customer_id, stripe_customer_id),
+         stripe_subscription_id = coalesce(p_subscription_id, stripe_subscription_id),
+         updated_at             = now()
+   where id = v_id;
+
+  return jsonb_build_object('matched', true, 'user_id', v_id,
+                            'premium_until', to_jsonb(v_until));
+end 
+$BODY$;
+
+revoke all on function public.df20_apply_billing_event(
+  text,text,uuid,text,text,text,timestamptz,text,int,int,text) from public;
+grant execute on function public.df20_apply_billing_event(
+  text,text,uuid,text,text,text,timestamptz,text,int,int,text) to anon;
+
+-- ── the events list, with a name against each line ────────────────────────
+create or replace function public.admin_recent_events(p_limit int default 40)
+returns jsonb language plpgsql stable security definer
+set search_path = public, pg_temp as $$
+begin
+  if not public.df20_is_admin() then raise exception 'DF20_NOT_AUTHORISED'; end if;
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+             'event_id', e.event_id, 'kind', e.kind, 'status', e.status,
+             'detail', e.detail, 'at', e.processed_at,
+             'amount_cents', e.amount_cents, 'currency', e.currency,
+             -- who it landed on. Null on a failure row is the point: that is
+             -- an event we could not tie to anybody.
+             'profile_id', e.profile_id,
+             'email', p.email,
+             'handle', p.handle)
+           order by e.processed_at desc)
+      from (select * from public.billing_events
+             order by processed_at desc
+             limit least(greatest(coalesce(p_limit, 40), 1), 200)) e
+      left join public.profiles p on p.id = e.profile_id), '[]'::jsonb);
+end $$;
+grant execute on function public.admin_recent_events(int) to authenticated;
+
+-- ── the money, such as it is ──────────────────────────────────────────────
+-- Grouped by currency because they are not addable, and counted only from
+-- rows that actually succeeded: a failed event has an amount on it too, and
+-- including those would report money that never arrived.
+create or replace function public.admin_billing_stats()
+returns jsonb language plpgsql stable security definer
+set search_path = public, pg_temp as $$
+begin
+  if not public.df20_is_admin() then raise exception 'DF20_NOT_AUTHORISED'; end if;
+  return jsonb_build_object(
+    'totals', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'currency', currency, 'gross_cents', gross, 'payments', n)
+             order by gross desc)
+        from (select coalesce(currency, 'unknown') as currency,
+                     sum(amount_cents) as gross, count(*) as n
+                from public.billing_events
+               where coalesce(status, 'ok') <> 'failed'
+                 and amount_cents is not null and amount_cents > 0
+               group by 1) t), '[]'::jsonb),
+
+    'this_month', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'currency', currency, 'gross_cents', gross, 'payments', n)
+             order by gross desc)
+        from (select coalesce(currency, 'unknown') as currency,
+                     sum(amount_cents) as gross, count(*) as n
+                from public.billing_events
+               where coalesce(status, 'ok') <> 'failed'
+                 and amount_cents is not null and amount_cents > 0
+                 and processed_at >= date_trunc('month', now())
+               group by 1) t), '[]'::jsonb),
+
+    'by_kind', coalesce((
+      select jsonb_object_agg(kind, n)
+        from (select coalesce(kind, 'unknown') as kind, count(*) as n
+                from public.billing_events
+               where coalesce(status, 'ok') <> 'failed'
+               group by 1) k), '{}'::jsonb),
+
+    'paying_accounts', (select count(distinct profile_id)
+                          from public.billing_events
+                         where profile_id is not null
+                           and coalesce(status, 'ok') <> 'failed'
+                           and coalesce(amount_cents, 0) > 0),
+    'active_now',      (select count(*) from public.profiles where premium_until > now()),
+    'subscriptions',   (select count(*) from public.profiles
+                         where subscription_status = 'active'),
+    'failed_events',   (select count(*) from public.billing_events where status = 'failed'),
+    'first_payment',   (select min(processed_at) from public.billing_events
+                         where coalesce(amount_cents, 0) > 0
+                           and coalesce(status, 'ok') <> 'failed'));
+end $$;
+grant execute on function public.admin_billing_stats() to authenticated;
+
+notify pgrst, 'reload schema';
+
 -- ─────────── 0041_allow_broke.sql ───────────
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -13580,6 +14135,48 @@ comment on column public.rooms.solo_key is
 create index if not exists rooms_solo_key_day_idx
   on public.rooms (solo_key, created_at) where is_solo;
 
+-- ── what the Quick Play screen asks before it offers a game ───────────────
+-- WAS ONLY EVER IN THE DATABASE. The column and index above were in this
+-- file, and the check below ASSERTS this function exists — but nothing here
+-- ever created it. It was written by hand in the SQL editor, so a database
+-- rebuilt from the bundle got a solo_key column, an index on it, and no way
+-- to answer "have you used your three?" — which QuickPlayClient asks on
+-- mount. Captured from the live definition.
+create or replace function public.df20_solo_quota(p_key text)
+returns jsonb language plpgsql stable security definer
+set search_path = public, pg_temp as $$
+declare v_uid uuid; v_key text; v_used int; v_premium boolean; v_limit int := 3;
+begin
+  v_uid := (select auth.uid());
+  v_premium := v_uid is not null and public.df20_premium_active(v_uid);
+  -- an account beats a cookie: it is the identity that cannot be cleared
+  v_key := coalesce(v_uid::text, nullif(btrim(coalesce(p_key,'')), ''));
+
+  if v_premium then
+    return jsonb_build_object('allowed', true, 'unlimited', true,
+                              'used', 0, 'limit', null, 'premium', true);
+  end if;
+  if v_key is null then
+    -- no key at all: let it through rather than block a first-time player
+    -- over a cookie that has not been issued yet
+    return jsonb_build_object('allowed', true, 'unlimited', false,
+                              'used', 0, 'limit', v_limit, 'premium', false);
+  end if;
+
+  select count(*) into v_used
+    from public.rooms
+   where is_solo and solo_key = v_key
+     and created_at >= date_trunc('day', now());
+
+  return jsonb_build_object(
+    'allowed', v_used < v_limit, 'unlimited', false,
+    'used', v_used, 'limit', v_limit, 'premium', false,
+    'signed_in', v_uid is not null);
+end $$;
+revoke all on function public.df20_solo_quota(text) from public;
+grant execute on function public.df20_solo_quota(text) to anon, authenticated;
+
+
 do $$
 begin
   if to_regprocedure('public.df20_solo_quota(text)') is null then
@@ -13590,6 +14187,615 @@ begin
     raise exception 'the uncapped 5-arg create_solo_room still exists'; end if;
   raise notice 'quick play cap in place';
 end $$;
+
+-- ─────────── 20260920041909_growth_metrics.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · growth metrics for the statistics page
+--
+-- The console counted things that only go up. Four numbers that can go DOWN,
+-- and that change a decision when they do:
+--
+--   second_player   how long the other player takes to arrive, and whether
+--                   they ever do. Diagnoses the two-thirds of rooms that
+--                   never fill — side-by-side play and link-sharing look
+--                   identical in a total and need opposite fixes.
+--   hosts           how many accounts came back for a second draft.
+--   onboarding      accounts that never hosted anything, and how long the
+--                   ones who did took to start.
+--   by_category     drafted often, finished rarely — the cut list.
+--
+-- All four are derived from columns that already exist. Nothing new is
+-- recorded, so these are true for the whole history, not from today onward.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+create or replace function public.admin_activity()
+returns jsonb language plpgsql stable security definer
+set search_path = public, pg_temp as $BODY$
+
+
+declare v_since timestamptz := now() - interval '7 days';
+begin
+  if not public.df20_is_admin() then raise exception 'DF20_NOT_AUTHORISED'; end if;
+
+  return jsonb_build_object(
+    'rooms', jsonb_build_object(
+      'total',  (select count(*) from public.rooms where code is not null),
+      'today',  (select count(*) from public.rooms
+                  where code is not null and created_at >= date_trunc('day', now())),
+      'week',   (select count(*) from public.rooms
+                  where code is not null and created_at >= v_since),
+      'complete',(select count(*) from public.rooms where status = 'complete'),
+
+      -- ── the headline: drafts that actually FINISHED ───────────────────
+      'finished_today', (select count(*) from public.rooms
+                          where status = 'complete'
+                            and completed_at >= date_trunc('day', now())),
+      'finished_week',  (select count(*) from public.rooms
+                          where status = 'complete' and completed_at >= v_since),
+
+      -- ── live means live ───────────────────────────────────────────────
+      -- Somebody has touched this draft in the last fifteen minutes. A turn
+      -- is fifteen seconds by default and five minutes at the longest, so a
+      -- game in progress cannot be quiet for that long; a game whose players
+      -- shut the laptop goes quiet immediately.
+      'live', (select count(*) from public.rooms r
+                where r.status = 'live'
+                  and exists (select 1 from public.bid_events e
+                               where e.room_id = r.id
+                                 and e.created_at > now() - interval '15 minutes')),
+
+      -- started, never finished, nobody home. Not concurrency — backlog.
+      'live_idle', (select count(*) from public.rooms r
+                     where r.status = 'live'
+                       and not exists (select 1 from public.bid_events e
+                                        where e.room_id = r.id
+                                          and e.created_at > now() - interval '15 minutes')),
+
+      -- ── the same seven days, narrowed at each step ────────────────────
+      -- A room that never found a second player was never a game. Counting
+      -- the drop-off is the only way to read the top number honestly.
+      'week_joined', (select count(*) from public.rooms r
+                       where r.code is not null and r.created_at >= v_since
+                         and (select count(*) from public.players p
+                               where p.room_id = r.id) >= 2),
+      'week_started', (select count(*) from public.rooms
+                        where code is not null and created_at >= v_since
+                          and started_at is not null),
+      'week_complete', (select count(*) from public.rooms
+                         where code is not null and created_at >= v_since
+                           and status = 'complete'),
+      -- created, never joined by anyone but the host, and now stale
+      'week_empty', (select count(*) from public.rooms r
+                      where r.code is not null and r.created_at >= v_since
+                        and (select count(*) from public.players p
+                              where p.room_id = r.id) < 2)),
+
+    /* Two series over the same fourteen days. `rooms` counts what was
+       CREATED that day; `finished` counts what was COMPLETED that day, which
+       is a different cohort on purpose — a room opened on Monday and played
+       out on Tuesday belongs to Monday's creation and Tuesday's finish. Read
+       as trend lines that is the honest pairing; for "of what we made, how
+       much got played", the weekly funnel above is the cohort answer. */
+    'daily', coalesce((
+      select jsonb_agg(jsonb_build_object('day', d::date, 'rooms', n,
+                                          'finished', f) order by d)
+        from (select g.d,
+                     (select count(*) from public.rooms r
+                       where r.code is not null
+                         and r.created_at >= g.d
+                         and r.created_at < g.d + interval '1 day') as n,
+                     (select count(*) from public.rooms r
+                       where r.status = 'complete'
+                         and r.completed_at >= g.d
+                         and r.completed_at < g.d + interval '1 day') as f
+                from generate_series(date_trunc('day', now()) - interval '13 days',
+                                     date_trunc('day', now()), interval '1 day') g(d)) s),
+      '[]'::jsonb),
+
+    'categories', jsonb_build_object(
+      'football', (select count(*) from public.rooms
+                    where code is not null and category_name = 'Football Draft'),
+      'other_library', (select count(*) from public.rooms
+                         where code is not null and pool_source in ('builtin','library')
+                           and coalesce(category_name,'') <> 'Football Draft'),
+      'wikipedia', (select count(*) from public.rooms
+                     where code is not null and pool_source = 'wikipedia'),
+      'manual', (select count(*) from public.rooms
+                  where code is not null and pool_source = 'manual'),
+      'saved', (select count(*) from public.rooms
+                 where code is not null and pool_source = 'saved')),
+
+    'modes', jsonb_build_object(
+      'standard', (select count(*) from public.rooms
+                    where code is not null and content_mode = 'standard'),
+      'creator', (select count(*) from public.rooms
+                   where code is not null and content_mode = 'creator')),
+
+    'duration', (
+      select jsonb_build_object(
+               'sample', count(*),
+               'avg_seconds', round(avg(secs)),
+               'median_seconds', round(percentile_cont(0.5) within group (order by secs)))
+        from (select extract(epoch from (completed_at - started_at)) as secs
+                from public.rooms
+               where status = 'complete'
+                 and started_at is not null and completed_at is not null
+                 and completed_at > started_at
+                 and completed_at - started_at < interval '12 hours') d),
+
+    'library', jsonb_build_object(
+      'public', (select count(*) from public.category_library),
+      'pending', (select count(*) from public.rooms where library_optin_state = 'pending'),
+      'saved_decks', (select count(*) from public.user_categories)),
+
+    'audience', jsonb_build_object(
+      'votes', (select count(*) from public.audience_votes),
+      'rooms_voted_on', (select count(distinct room_id) from public.audience_votes)),
+
+    /* ── HOW LONG THE SECOND PLAYER TAKES ──────────────────────────────
+       Two thirds of rooms never fill, and the two explanations need
+       opposite fixes. Twenty seconds means people are sitting side by
+       side and the empty rooms are idle curiosity. Four minutes means
+       they are sharing a code and losing their friend in the gap, and
+       async play is then the most valuable thing to build. The number
+       tells you which. */
+    'second_player', (
+      select jsonb_build_object(
+               'sample', count(*),
+               'median_seconds', round(percentile_cont(0.5) within group (order by secs)),
+               'p90_seconds', round(percentile_cont(0.9) within group (order by secs)))
+        from (select extract(epoch from (p2.created_at - r.created_at)) as secs
+                from public.rooms r
+                join lateral (select created_at from public.players
+                               where room_id = r.id
+                               order by created_at offset 1 limit 1) p2 on true
+               where r.created_at > now() - interval '90 days'
+                 and p2.created_at >= r.created_at) d),
+
+    /* ── DOES ANYBODY COME BACK ────────────────────────────────────────
+       A site where everyone plays once is a demo. This is the single
+       best growth signal here and nothing was recording it. */
+    'hosts', (
+      select jsonb_build_object(
+               'total', count(*),
+               'repeat', count(*) filter (where n > 1),
+               'finished_one', count(*) filter (where fin > 0),
+               'most_by_one', coalesce(max(n), 0))
+        from (select host_profile_id, count(*) as n,
+                     count(*) filter (where status = 'complete') as fin
+                from public.rooms
+               where host_profile_id is not null
+               group by 1) h),
+
+    /* ── SIGNUP TO FIRST DRAFT ─────────────────────────────────────────
+       An account that never hosts anything is an onboarding failure, and
+       the console could not see one. */
+    'onboarding', (
+      select jsonb_build_object(
+               'accounts', count(*),
+               'ever_hosted', count(*) filter (where first_room is not null),
+               'median_hours_to_first',
+                 round(percentile_cont(0.5) within group (
+                   order by extract(epoch from (first_room - created_at)) / 3600.0)::numeric, 1))
+        from (select p.created_at,
+                     (select min(r.created_at) from public.rooms r
+                       where r.host_profile_id = p.id) as first_room
+                from public.profiles p) o),
+
+    /* ── WHICH CATEGORIES ACTUALLY GET PLAYED OUT ──────────────────────
+       Drafted often and finished rarely is a bad deck — too shallow, too
+       obscure, or the wrong recognition level. This is the cut list. */
+    'by_category', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'name', category_name, 'drafts', n, 'finished', fin,
+               'rate', case when n > 0 then round(100.0 * fin / n) end) order by n desc)
+        from (select category_name, count(*) as n,
+                     count(*) filter (where status = 'complete') as fin
+                from public.rooms
+               where category_name is not null
+                 and created_at > now() - interval '90 days'
+               group by 1
+               order by count(*) desc
+               limit 8) c), '[]'::jsonb),
+
+    'premium', jsonb_build_object(
+      'active', (select count(*) from public.profiles where premium_until > now()),
+      'by_source', coalesce((select jsonb_object_agg(coalesce(premium_source,'none'), n)
+                               from (select premium_source, count(*) as n
+                                       from public.profiles
+                                      where premium_until > now()
+                                      group by premium_source) s), '{}'::jsonb)));
+end 
+
+$BODY$;
+grant execute on function public.admin_activity() to authenticated;
+
+notify pgrst, 'reload schema';
+
+-- ─────────── 20260920134132_room_scouting_and_head_to_head.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · per-draft scouting, and a head-to-head record
+--
+-- The four axes — Sniper, Whale, Instigator, Hoarder — have existed since
+-- 0022 and nobody sees them. They live on /profile, behind a nav click,
+-- describing a WINDOW of drafts. The thirty seconds after a draft ends is
+-- when two people are still arguing about it, and that is the one moment the
+-- numbers would land. So this is the same four axes computed for ONE room,
+-- for BOTH players, to be read side by side while the argument is live.
+--
+-- Same formulas as 0022, same landmarks, deliberately: Whale 100 = paying
+-- twice the even split, Instigator 100 = five losing raises. A second set of
+-- scales would make the profile page and the results screen disagree about
+-- what a Whale is. Gifted cards stay excluded from Sniper and Whale — a card
+-- handed to you for nothing is not a purchase.
+--
+-- NO NEW EXPOSURE. Every input is already public for a finished room:
+-- df20_public_state hands out the roster with prices, the events and both
+-- bankrolls. This aggregates what a spectator could already add up, which is
+-- why it is readable by anyone holding the code rather than gated.
+--
+-- HEAD TO HEAD needs identity that survives a room, so it is profiles only —
+-- two signed-in accounts get a record, anonymous players correctly get
+-- nothing. The winner of a past draft comes from the AUDIENCE vote, because
+-- the players' own vote was removed: two people asked which of them won both
+-- said themselves, which is a tie, which is nobody.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+create or replace function public.room_scouting(p_code text)
+returns jsonb language plpgsql stable security definer
+set search_path = public, pg_temp as $$
+declare v_room public.rooms; v_out jsonb := '[]'::jsonb; r record;
+        v_h2h jsonb := null; v_a uuid; v_b uuid;
+begin
+  select * into v_room from public.rooms where code = upper(btrim(p_code));
+  if not found then raise exception 'DF20_NO_ROOM'; end if;
+  if v_room.status <> 'complete' then
+    return jsonb_build_object('ready', false);
+  end if;
+
+  for r in
+    select p.id, p.seat, p.display_name, p.profile_id, p.bankroll_cents,
+           (select count(*) from public.roster_entries e
+             where e.player_id = p.id and not e.gifted)                  as bought,
+           (select count(*) from public.roster_entries e
+             where e.player_id = p.id and e.gifted)                      as gifts,
+           (select count(*) from public.roster_entries e
+             where e.player_id = p.id and not e.gifted
+               and e.price_cents = v_room.min_bid_cents)                 as snipes,
+           (select coalesce(sum(e.price_cents), 0) from public.roster_entries e
+             where e.player_id = p.id and not e.gifted)                  as spend,
+           -- raises that did not end in a win: the cost of being argued with
+           (select count(*) from public.bid_events b
+              join public.lots l on l.id = b.lot_id
+             where b.room_id = v_room.id and b.player_id = p.id
+               and b.action = 'raise'
+               and l.winner_player_id is distinct from p.id)             as losing_raises
+      from public.players p
+     where p.room_id = v_room.id
+     order by p.seat
+  loop
+    declare
+      v_even   numeric := case when v_room.roster_size > 0
+                          then v_room.starting_bankroll_cents::numeric / v_room.roster_size end;
+      v_avg    numeric := case when r.bought > 0 then r.spend::numeric / r.bought end;
+      v_left   numeric := case when v_room.starting_bankroll_cents > 0
+                          then 100.0 * r.bankroll_cents / v_room.starting_bankroll_cents end;
+      v_snipe  numeric := case when r.bought > 0 then 100.0 * r.snipes / r.bought else 0 end;
+      s_sniper int; s_whale int; s_inst int; s_hoard int; v_top int; v_title text;
+    begin
+      s_sniper := least(100, greatest(0, round(v_snipe)))::int;
+      s_whale  := least(100, greatest(0, round(
+                    case when coalesce(v_even,0) > 0
+                         then 50.0 * coalesce(v_avg,0) / v_even else 0 end)))::int;
+      s_inst   := least(100, greatest(0, round(r.losing_raises * 20)))::int;
+      s_hoard  := least(100, greatest(0, round(coalesce(v_left,0))))::int;
+
+      v_top := greatest(s_sniper, s_whale, s_inst, s_hoard);
+      v_title := case
+        when v_top = 0 then 'quiet'
+        when v_top = s_whale then 'whale'
+        when v_top = s_sniper then 'sniper'
+        when v_top = s_inst then 'instigator'
+        else 'hoarder' end;
+
+      v_out := v_out || jsonb_build_object(
+        'seat', r.seat, 'name', r.display_name, 'title', v_title,
+        /* Scores and the raw figures behind them. Money is NOT formatted
+           here — the client owns formatCents, and a currency string built in
+           SQL is one that cannot follow the UI when it changes. */
+        'axes', jsonb_build_array(
+          jsonb_build_object('key','sniper','label','Sniper','score',s_sniper,
+            'snipes', r.snipes, 'bought', r.bought),
+          jsonb_build_object('key','whale','label','Whale','score',s_whale,
+            'avg_price_cents', round(coalesce(v_avg,0))::int),
+          jsonb_build_object('key','instigator','label','Instigator','score',s_inst,
+            'losing_raises', r.losing_raises),
+          jsonb_build_object('key','hoarder','label','Hoarder','score',s_hoard,
+            'leftover_cents', r.bankroll_cents)));
+    end;
+  end loop;
+
+  -- ── the rivalry, if both sides have an account ────────────────────────
+  /* No max() for uuid in Postgres, and no aggregate is wanted anyway —
+     there is exactly one player per seat. */
+  select profile_id into v_a from public.players
+   where room_id = v_room.id and seat = 1;
+  select profile_id into v_b from public.players
+   where room_id = v_room.id and seat = 2;
+
+  if v_a is not null and v_b is not null then
+    select jsonb_build_object(
+             'played', count(*),
+             'seat1_wins', count(*) filter (where win = 1),
+             'seat2_wins', count(*) filter (where win = 2),
+             'draws',      count(*) filter (where win is null))
+      into v_h2h
+      from (
+        select case
+                 when va > vb then pa.seat
+                 when vb > va then pb.seat
+               end as win
+          from public.rooms r2
+          join public.players pa on pa.room_id = r2.id and pa.profile_id = v_a
+          join public.players pb on pb.room_id = r2.id and pb.profile_id = v_b
+          cross join lateral (
+            select count(*) filter (where av.winner_player_id = pa.id) as va,
+                   count(*) filter (where av.winner_player_id = pb.id) as vb
+              from public.audience_votes av where av.room_id = r2.id) v
+         where r2.status = 'complete') h;
+  end if;
+
+  return jsonb_build_object('ready', true, 'players', v_out, 'head_to_head', v_h2h);
+end $$;
+
+revoke all on function public.room_scouting(text) from public;
+grant execute on function public.room_scouting(text) to anon, authenticated;
+
+notify pgrst, 'reload schema';
+
+-- ─────────── 20260920134315_rematch.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · rematch — "Run it back" that actually runs it back
+--
+-- That button was <Link href="/new">. It carried nothing: not the category,
+-- not the bankroll, not the roster size, and not the person you had just
+-- played. You re-picked every setting and generated a new code to send to
+-- somebody who was already there.
+--
+-- A rematch copies the settings, seats BOTH players under the names they
+-- just used, and needs no code passed between them.
+--
+-- WHY TWO FUNCTIONS AND NOT ONE. The obvious shape — one call that returns
+-- both players' session tokens — hands the caller the ability to act as
+-- their opponent, which is the one thing this app's whole auth model exists
+-- to prevent. So the room is created with both seats filled, and each player
+-- collects their OWN token by proving they held a seat in the room it came
+-- from. Nobody is ever handed anybody else's.
+--
+-- The deck is dealt fresh from the same source, so a rematch on a saved or
+-- typed category is the same category reshuffled, never the same order.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+alter table public.rooms
+  add column if not exists rematch_of uuid references public.rooms(id) on delete set null;
+
+create index if not exists rooms_rematch_of_idx
+  on public.rooms (rematch_of) where rematch_of is not null;
+
+-- ── start one ─────────────────────────────────────────────────────────────
+create or replace function public.create_rematch(p_code text, p_token uuid)
+returns jsonb language plpgsql security definer
+set search_path = public, pg_temp as $$
+declare v_old public.rooms; v_me public.players; v_new public.rooms;
+        v_n int; v_mine uuid;
+begin
+  select * into v_old from public.rooms where code = upper(btrim(p_code)) for update;
+  if not found then raise exception 'DF20_NO_ROOM'; end if;
+
+  select * into v_me from public.players
+   where room_id = v_old.id and session_token = p_token;
+  if not found then raise exception 'DF20_NOT_IN_ROOM'; end if;
+
+  if v_old.status not in ('complete', 'abandoned') then
+    raise exception 'DF20_NOT_FINISHED';
+  end if;
+
+  -- somebody already pressed it: hand back the same room rather than making
+  -- a second one, so two people tapping at once cannot fork the rematch
+  select * into v_new from public.rooms where rematch_of = v_old.id limit 1;
+  if found then
+    return (select jsonb_build_object(
+              'code', v_new.code, 'room_id', v_new.id, 'player_id', np.id,
+              'token', np.session_token, 'seat', np.seat, 'created', false)
+              from public.players np
+             where np.room_id = v_new.id and np.seat = v_me.seat);
+  end if;
+
+  insert into public.rooms (
+      code, title, roster_size, starting_bankroll_cents, min_bid_cents,
+      timer_seconds, gives_per_player, is_private, brand_accent, brand_logo_url,
+      host_profile_id, content_mode, allow_broke, category_name, pool_source,
+      rematch_of)
+  select public.df20_gen_code(), v_old.title, v_old.roster_size,
+         v_old.starting_bankroll_cents, v_old.min_bid_cents, v_old.timer_seconds,
+         v_old.gives_per_player, v_old.is_private, v_old.brand_accent,
+         v_old.brand_logo_url, v_old.host_profile_id, v_old.content_mode,
+         v_old.allow_broke, v_old.category_name, v_old.pool_source,
+         v_old.id
+  returning * into v_new;
+
+  -- both seats, same names, fresh tokens
+  insert into public.players (room_id, seat, display_name, bankroll_cents,
+                              is_host, profile_id)
+  select v_new.id, p.seat, p.display_name, v_new.starting_bankroll_cents,
+         p.is_host, p.profile_id
+    from public.players p where p.room_id = v_old.id;
+
+  v_n := public.df20_fill_pool(v_new.id, coalesce(v_old.pool_source, 'builtin'), null);
+  if v_n < v_new.roster_size * 2 then raise exception 'DF20_POOL_TOO_SMALL'; end if;
+
+  perform public.df20_touch(v_old.id);
+  perform public.df20_broadcast(v_old.id);   -- the other screen learns of it
+
+  /* room_id and player_id come back too: the client's session store keys on
+     them, and a seat saved without a player id is silently discarded. */
+  return (select jsonb_build_object(
+            'code', v_new.code, 'room_id', v_new.id, 'player_id', np.id,
+            'token', np.session_token, 'seat', np.seat, 'created', true)
+            from public.players np
+           where np.room_id = v_new.id and np.seat = v_me.seat);
+end $$;
+
+-- ── join the one your opponent started ────────────────────────────────────
+create or replace function public.claim_rematch(p_code text, p_token uuid)
+returns jsonb language plpgsql security definer
+set search_path = public, pg_temp as $$
+declare v_old public.rooms; v_me public.players; v_new public.rooms; v_mine uuid;
+begin
+  select * into v_old from public.rooms where code = upper(btrim(p_code));
+  if not found then raise exception 'DF20_NO_ROOM'; end if;
+
+  /* The proof is the OLD token. Holding a seat in the room this came from is
+     what entitles you to the matching seat in the rematch — and it only ever
+     returns the token for YOUR seat. */
+  select * into v_me from public.players
+   where room_id = v_old.id and session_token = p_token;
+  if not found then raise exception 'DF20_NOT_IN_ROOM'; end if;
+
+  select * into v_new from public.rooms where rematch_of = v_old.id limit 1;
+  if not found then raise exception 'DF20_NO_REMATCH'; end if;
+
+  select session_token into v_mine from public.players
+   where room_id = v_new.id and seat = v_me.seat;
+  if v_mine is null then raise exception 'DF20_NO_SEAT'; end if;
+
+  return (select jsonb_build_object(
+            'code', v_new.code, 'room_id', v_new.id, 'player_id', np.id,
+            'token', np.session_token, 'seat', np.seat)
+            from public.players np
+           where np.room_id = v_new.id and np.seat = v_me.seat);
+end $$;
+
+revoke all on function public.create_rematch(text, uuid) from public;
+revoke all on function public.claim_rematch(text, uuid) from public;
+grant execute on function public.create_rematch(text, uuid) to anon, authenticated;
+grant execute on function public.claim_rematch(text, uuid) to anon, authenticated;
+
+-- ── let the old room say a rematch exists ─────────────────────────────────
+create or replace function public.df20_public_state(p_room uuid)
+returns jsonb language plpgsql stable security definer
+set search_path = public, pg_temp as $PS$
+
+declare v_room public.rooms;
+begin
+  select * into v_room from public.rooms where id = p_room;
+  if not found then return null; end if;
+
+  return jsonb_build_object(
+    'server_now', to_jsonb(now()),
+    /* The pointer lives on the NEW room, so a finished room cannot tell its
+       own players that a rematch is waiting. This adds that one derived
+       field — a code, which is not a secret; anyone in the old room is
+       entitled to the seat it leads to, and claim_rematch still demands
+       their old token before handing over anything. */
+    'room', (to_jsonb(v_room) - 'setup_token' - 'setup_result_token' - 'obs_token')
+            || jsonb_build_object('rematch_code',
+                 (select n.code from public.rooms n where n.rematch_of = v_room.id limit 1)),
+    'deck_remaining', public.df20_deck_remaining(p_room),
+    'players', coalesce((
+        select jsonb_agg(
+                 (to_jsonb(pl) - 'session_token')
+                 || jsonb_build_object(
+                      'open_slots', public.df20_open_slots(p_room, pl.id),
+                      'max_legal_bid_cents', public.df20_max_legal_bid(
+                          pl.bankroll_cents, v_room.min_bid_cents,
+                          public.df20_open_slots(p_room, pl.id),
+                          v_room.allow_broke),
+                      'is_broke', public.df20_is_broke(p_room, pl.id),
+                      'gives_left', greatest(v_room.gives_per_player - pl.gives_used, 0))
+                 order by pl.seat)
+          from public.players pl where pl.room_id = p_room), '[]'::jsonb),
+    'roster', coalesce((select jsonb_agg(to_jsonb(r) order by r.player_id, r.pick_number)
+                          from public.roster_entries r where r.room_id = p_room), '[]'::jsonb),
+    'lot', (select to_jsonb(l) from public.lots l where l.room_id = p_room
+              order by (l.status in ('offered','bidding')) desc, l.created_at desc limit 1),
+    'events', coalesce((select jsonb_agg(e order by e.id)
+                          from (select * from public.bid_events
+                                 where room_id = p_room order by id desc limit 60) e), '[]'::jsonb),
+    'votes', coalesce((select jsonb_agg(to_jsonb(v)) from public.votes v
+                        where v.room_id = p_room), '[]'::jsonb)
+  );
+end 
+$PS$;
+revoke all on function public.df20_public_state(uuid) from public, anon, authenticated;
+
+notify pgrst, 'reload schema';
+
+-- ─────────── 20260920135142_football_draft_recognisable.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · Football Draft, cut down to names people recognise
+--
+-- THE MEASUREMENT. Football Draft held 268 names. Only 26 of them — 10% —
+-- also appear in NFL Players, which is the deck this project builds by
+-- ranking Wikipedia pageviews and cutting at 40% of the tenth-ranked player.
+-- A five-slot draft deals ten cards, so by the project's OWN recognisability
+-- test roughly one card per draft was a name anybody could argue about.
+--
+-- It was also the only deck on the shelf with no pictures at all: 0 of 268,
+-- where NFL Players, NFL All-Time Greats and Candy and Sweets are each at
+-- 100%. No visual rescue for a name you do not know.
+--
+-- WHAT WAS IN IT. A random sample turned up Frank Ragnow, Lane Johnson,
+-- Landon Dickerson, Olu Fashanu and JC Latham — offensive linemen — beside
+-- Tyler Bass and Cameron Dicker, who are kickers. "Who would you rather
+-- have" is not a question two people can argue about for a centre. The
+-- category guide states the rule this broke: recognition, not expertise.
+--
+-- THE FIX. Rebuilt as the union of the two decks this project has already
+-- curated and vouches for — NFL Players (37) and NFL All-Time Greats (59),
+-- 94 after the two that appear in both. Every name carries the picture it
+-- already had. It stops being this season's roster and becomes current
+-- players against all-time greats, which is a better argument anyway, and 94
+-- is well past the four-times-roster-size depth the guide asks for.
+--
+-- DELETE FIRST, because df20_seed_category upserts and never deletes: a
+-- category that SHRINKS keeps every dropped name otherwise. That is the 0049
+-- lesson and this is the same shape of change.
+--
+-- Rooms already dealt are untouched. room_pool copies name, image and
+-- licence by value with no foreign key back here, so every existing and
+-- in-flight draft keeps exactly the deck it was dealt.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+do $$
+declare v_fd uuid; v_before int; v_after int;
+begin
+  select id into v_fd from public.category_library where name = 'Football Draft';
+  if v_fd is null then
+    raise notice 'No Football Draft category on this database; nothing to do.';
+    return;
+  end if;
+
+  select count(*) into v_before from public.category_library_items where library_id = v_fd;
+
+  delete from public.category_library_items where library_id = v_fd;
+
+  insert into public.category_library_items (library_id, name, image_url, image_license)
+  select distinct on (i.name) v_fd, i.name, i.image_url, i.image_license
+    from public.category_library c
+    join public.category_library_items i on i.library_id = c.id
+   where c.name in ('NFL Players', 'NFL All-Time Greats')
+   order by i.name, (i.image_url is null);   -- prefer the copy that has a picture
+
+  select count(*) into v_after from public.category_library_items where library_id = v_fd;
+  raise notice 'Football Draft: % names -> %', v_before, v_after;
+end $$;
+
+notify pgrst, 'reload schema';
 
 -- ─────────── 0065_restore_force_or_take.sql ───────────
 
