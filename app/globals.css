@@ -152,16 +152,27 @@
     }
 
     /* Standalone controls — the category filter chips on /new were 24px, and
-       every small button in the console the same. Buttons already centre
-       their text, so inline-flex with centring on both axes renders the same
-       and simply grows the box. Links in prose are deliberately NOT included:
-       turning an <a> inside a paragraph into a 44px flex box would wreck the
-       line it sits in. */
-    button {
+       every small button in the console the same. Links in prose are
+       deliberately NOT included: turning an <a> inside a paragraph into a
+       44px flex box would wreck the line it sits in.
+
+       THE CENTRING IS NOT FOR EVERY BUTTON. "Buttons already centre their
+       text, so inline-flex renders the same" holds for a chip with one label
+       in it. It is false for a button built out of stacked blocks — the four
+       "where do the picks come from" cards on /new are a title row plus a
+       description — because a row-direction flex box lays those two children
+       side by side. On a phone that squeezed each title into a 127px column
+       and wrapped "Type your own" over three lines with its description
+       beside it.
+
+       So the height, which is the accessibility win, goes to every button;
+       the centring goes only to buttons with at most one element child. */
+    button { min-height: 44px; }
+
+    button:not(:has(> * + *)) {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-height: 44px;
     }
 
     /* A 16px checkbox is a 16px target. 24px is the practical ceiling before

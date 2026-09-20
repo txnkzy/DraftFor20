@@ -338,6 +338,20 @@ function NewRoom() {
 
         <div className="mt-7 flex flex-col gap-3">
           <span className="type-label text-muted">where do the picks come from</span>
+          {/* What it costs, at the moment of wanting it. A padlock that will
+              not say a price makes the click feel like a trap; "$1" is a
+              small enough number that showing it does more work than hiding
+              it. Only drawn for people who do not already have premium. */}
+          {!premiumActive ? (
+            <p className="text-[0.8125rem] leading-snug text-muted">
+              One is free. The other three need premium —{" "}
+              <span className="text-gold">$1 for a day</span> or{" "}
+              <span className="text-gold">$5 a month</span>.{" "}
+              <Link href="/pricing" className="text-ink underline">
+                What you get
+              </Link>
+            </p>
+          ) : null}
           {(
             [
               ["free", "Pick a category", `${shelf.length} ready to play. Free.`, false],
@@ -368,12 +382,23 @@ function NewRoom() {
                 setMode(m); setMatch(null); setNoMatch(false);
               }}
               className={`border p-3 text-left ${mode === m ? "border-coral" : "rule hover:border-ink"}`}
+              style={
+                /* Gold is already this product's money colour — bankrolls,
+                   prices, the winning bid. Borrowing it for the paywall says
+                   "this costs something" in a language the board has been
+                   teaching the whole time, rather than inventing a new one.
+                   The muted grey these used to wear is the palette's quietest
+                   colour: the lock was there and nobody could see it. */
+                premium_ && !premiumActive
+                  ? { borderLeftColor: "var(--color-gold)", borderLeftWidth: 3 }
+                  : undefined
+              }
             >
               <span className="flex items-baseline gap-2">
                 <span className={`type-label ${mode === m ? "text-coral" : "text-ink"}`}>{label}</span>
                 {premium_ && !premiumActive ? (
-                  <span className="type-label flex items-center gap-1 text-muted">
-                    <Padlock size={11} /> premium
+                  <span className="type-label flex items-center gap-1 text-gold">
+                    <Padlock size={12} /> premium
                   </span>
                 ) : null}
               </span>
