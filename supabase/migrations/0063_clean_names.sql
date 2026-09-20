@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- DraftFor20 · 0058 · PG names, and a name that is already taken says so
+-- DraftFor20 · 0063 · PG names, and a name that is already taken says so
 --
 -- TWO RULES, BOTH IN POSTGRES.
 --
@@ -21,6 +21,20 @@
 -- Evasion is normalised away first: leetspeak (4ss, fück -> no, sh1t, $hit),
 -- and separators (f.u.c.k, f u c k, f-u-c-k) both collapse into the squashed
 -- form before matching.
+--
+-- ⚠ OVERLAPS 0058_username_word_filter, WRITTEN IN PARALLEL. That migration
+-- built blocked_handle_words + df20_handle_explicit() for profiles.handle,
+-- with the same Scunthorpe reasoning and a different word list. This one's
+-- trigger ALSO guards profiles.handle. Handles are therefore checked twice,
+-- against two lists that will drift, and a word on one but not the other
+-- produces a different error depending on which fires first.
+--
+-- Neither is wrong; having both is. They should converge on one list — this
+-- one is seeded from LDNOOBW and covers display names, room titles and
+-- handles; that one has an allow-list pass and a token/substring mode per
+-- word, which is the better matching design. Whoever picks: keep 0058's
+-- match modes and allow list, point them at df20_profanity, and drop the
+-- handle branch from df20_guard_profile_name below.
 --
 -- Re-runnable.
 -- ═══════════════════════════════════════════════════════════════════════════

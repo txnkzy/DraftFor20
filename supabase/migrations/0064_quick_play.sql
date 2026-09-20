@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- DraftFor20 · 0059 · Quick Play: one human, one bot
+-- DraftFor20 · 0064 · Quick Play: one human, one bot
 --
 -- THE BOT IS A PLAYER ROW, NOT A NEW CODE PATH. It gets a seat, a bankroll,
 -- gives, and a session token like anybody else, and it acts by calling

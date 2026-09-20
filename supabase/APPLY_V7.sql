@@ -11978,10 +11978,635 @@ revoke all on function public.df20_selfcheck_usernames() from public;
 
 select public.df20_selfcheck_usernames();
 
--- ─────────── 0058_clean_names.sql ───────────
+-- ─────────── 0058_username_word_filter.sql ───────────
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- DraftFor20 · 0058 · PG names, and a name that is already taken says so
+-- DraftFor20 · 0058 · usernames stay clean, and say so
+--
+-- An explicit name came back "Taken — try another", which was both untrue and
+-- useless: the name is free, and the person is told to guess again with no
+-- idea what was wrong. It gets its own reason code so the form can say what
+-- it means.
+--
+-- THE LIST IS A TABLE, NOT A CONSTANT. Words are added by an operator with an
+-- INSERT rather than a deploy, the list stays out of the repo, and it is
+-- never shipped to a browser — lib/username.ts deliberately does NOT mirror
+-- this rule, unlike every other one. The form still cannot submit a bad name
+-- because it waits for handle_available() to answer.
+--
+-- TWO MATCH MODES, because one does not work. 'substring' is for words that
+-- essentially never sit inside an innocent one. 'token' is for the short
+-- ambiguous ones — matching those as substrings is the Scunthorpe problem,
+-- and it blocks classic, assassin, analysis, peacock, compass and bassist.
+-- Those match only as a whole word, with an underscore or digit as boundary.
+--
+-- The allow list runs FIRST, blanking known-innocent words out of the string
+-- so their letters cannot go on to trigger a substring hit.
+--
+-- Re-runnable.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+create table if not exists public.blocked_handle_words (
+  word text primary key,
+  mode text not null default 'substring' check (mode in ('substring','token')),
+  added_at timestamptz not null default now()
+);
+alter table public.blocked_handle_words enable row level security;
+revoke all on table public.blocked_handle_words from public, anon, authenticated;
+
+create table if not exists public.allowed_handle_words (
+  word text primary key,
+  added_at timestamptz not null default now()
+);
+alter table public.allowed_handle_words enable row level security;
+revoke all on table public.allowed_handle_words from public, anon, authenticated;
+
+insert into public.allowed_handle_words (word) values
+  ('scunthorpe'),('assassin'),('assess'),('assign'),('assist'),('asset'),
+  ('class'),('classic'),('grass'),('brass'),('glass'),('compass'),('embassy'),
+  ('massive'),('passion'),('password'),('bassist'),('analysis'),('analyst'),
+  ('canal'),('banal'),('arsenal'),('shiitake'),('cockpit'),('cocktail'),
+  ('peacock'),('hancock'),('titan'),('title'),('competition'),('sussex'),
+  ('essex'),('middlesex'),('document'),('mishit'),('cumulative'),('circumstance'),
+  ('accumulate'),('scrap'),('therapist'),('grape'),('grapes')
+on conflict (word) do nothing;
+
+insert into public.blocked_handle_words (word, mode) values
+  ('fuck','substring'),('shit','substring'),('cunt','substring'),
+  ('bitch','substring'),('whore','substring'),('slut','substring'),
+  ('rape','substring'),('rapist','substring'),('molest','substring'),
+  ('pedo','substring'),('paedo','substring'),('incest','substring'),
+  ('bestiality','substring'),('nigger','substring'),('nigga','substring'),
+  ('faggot','substring'),('retard','substring'),('wank','substring'),
+  ('asshole','substring'),('arsehole','substring'),('dickhead','substring'),
+  ('cocksuck','substring'),('motherfuck','substring'),('bollock','substring'),
+  ('jizz','substring'),('handjob','substring'),('blowjob','substring'),
+  ('ass','token'),('anal','token'),('cum','token'),('tit','token'),
+  ('tits','token'),('crap','token'),('damn','token'),('cock','token'),
+  ('dick','token'),('sex','token'),('pussy','token'),('penis','token'),
+  ('vagina','token'),('boob','token'),('boobs','token'),('poop','token'),
+  ('fag','token'),('hoe','token'),('milf','token'),('bastard','token')
+on conflict (word) do nothing;
+
+create or replace function public.df20_handle_explicit(p_handle text)
+returns boolean language plpgsql stable security definer
+set search_path = public, pg_temp as $$
+declare v_raw text; v_leet text; w text;
+begin
+  v_raw := lower(btrim(coalesce(p_handle, '')));
+  if v_raw = '' then return false; end if;
+
+  -- leet-fold, drop separators, collapse a letter repeated three or more
+  -- times, so fuuuck and f_u_c_k reduce to the same string.
+  -- from/to must be the SAME LENGTH or translate silently shifts the map:
+  -- a stray space in the to-string made ! map to blank and shifted nothing
+  -- else, which is the kind of bug that only shows up on one input.
+  v_leet := translate(v_raw, '0134578@$!', 'oieastbasi');
+  v_leet := regexp_replace(v_leet, '[^a-z]', '', 'g');
+  v_leet := regexp_replace(v_leet, '(.)\1{2,}', '\1', 'g');
+
+  for w in select word from public.allowed_handle_words loop
+    v_leet := replace(v_leet, w, '.');
+  end loop;
+
+  if exists (select 1 from public.blocked_handle_words b
+              where b.mode = 'substring' and position(b.word in v_leet) > 0)
+  then return true; end if;
+
+  -- A token word spelled with separators — a_s_s — survives the split into
+  -- single letters, so test the folded string as a whole too. EXACT match
+  -- only: as a substring these are the Scunthorpe problem.
+  if exists (select 1 from public.blocked_handle_words b
+              where b.mode = 'token' and b.word = v_leet)
+  then return true; end if;
+
+  if exists (
+    select 1 from public.blocked_handle_words b
+     where b.mode = 'token'
+       and b.word = any (regexp_split_to_array(v_raw, '[^a-z]+'))
+  ) then return true; end if;
+
+  return false;
+end $$;
+revoke all on function public.df20_handle_explicit(text) from public;
+
+-- Wired into the one validator everything already calls. No longer immutable:
+-- it reads the word tables now. Every caller was stable or volatile already.
+create or replace function public.df20_handle_problem(p_handle text)
+returns text language plpgsql stable security definer
+set search_path = public, pg_temp as $$
+declare v text;
+begin
+  v := lower(btrim(coalesce(p_handle, '')));
+  if length(v) = 0                then return 'required';   end if;
+  if length(v) < 3                then return 'too_short';  end if;
+  if length(v) > 20               then return 'too_long';   end if;
+  if v !~ '^[a-z0-9_]+$'          then return 'charset';    end if;
+  if v !~ '^[a-z0-9]'             then return 'edge';       end if;
+  if v !~ '[a-z0-9]$'             then return 'edge';       end if;
+  if v ~ '__'                     then return 'edge';       end if;
+  if v = any (array[
+      'admin','administrator','root','staff','mod','moderator','support','help',
+      'system','official','draftfor20','draft420','df20','team','owner',
+      'api','auth','login','signin','signup','logout','profile','settings',
+      'billing','pricing','room','rooms','new','vote','votes','results','setup',
+      'leaderboard','dev','obs','privacy','terms','about','contact','null',
+      'undefined','anonymous','anon','you','everyone','host','guest'])
+  then return 'reserved'; end if;
+  if public.df20_handle_explicit(v) then return 'explicit'; end if;
+  return null;
+end $$;
+
+create or replace function public.df20_selfcheck_usernames()
+returns text language plpgsql
+set search_path = public, pg_temp as $$
+declare r text;
+begin
+  foreach r in array array[
+    'public.df20_handle_problem(text)','public.handle_available(text)',
+    'public.set_my_handle(text)','public.df20_handle_explicit(text)',
+    'public.df20_leaderboard(text,integer)'
+  ] loop
+    if to_regprocedure(r) is null then
+      raise exception 'DF20_SELFCHECK: % is missing', r; end if;
+  end loop;
+  if not exists (select 1 from information_schema.columns
+                  where table_schema='public' and table_name='profiles'
+                    and column_name='handle_chosen') then
+    raise exception 'DF20_SELFCHECK: profiles.handle_chosen is missing'; end if;
+  if not has_function_privilege('authenticated','public.set_my_handle(text)','execute') then
+    raise exception 'DF20_SELFCHECK: authenticated cannot call set_my_handle - 0031 re-applied?'; end if;
+  if public.df20_handle_problem('ok_name1') is not null then
+    raise exception 'DF20_SELFCHECK: a valid handle was rejected'; end if;
+  if public.df20_handle_problem('admin') is distinct from 'reserved'
+     or public.df20_handle_problem('ab') is distinct from 'too_short'
+     or public.df20_handle_problem('_lead') is distinct from 'edge'
+     or public.df20_handle_problem('has space') is distinct from 'charset' then
+    raise exception 'DF20_SELFCHECK: handle validation is not enforcing its rules'; end if;
+  -- plain, leet, padded and separator-split spellings
+  if public.df20_handle_problem('fuck_this') is distinct from 'explicit'
+     or public.df20_handle_problem('big_ass') is distinct from 'explicit'
+     or public.df20_handle_problem('sh1t') is distinct from 'explicit'
+     or public.df20_handle_problem('fuuuck') is distinct from 'explicit'
+     or public.df20_handle_problem('a_s_s') is distinct from 'explicit' then
+    raise exception 'DF20_SELFCHECK: the word filter is not catching'; end if;
+  -- and NOT the innocent words that make a naive substring match unusable
+  if public.df20_handle_problem('classic') is not null
+     or public.df20_handle_problem('assassin') is not null
+     or public.df20_handle_problem('analysis') is not null
+     or public.df20_handle_problem('peacock') is not null
+     or public.df20_handle_problem('bassist') is not null
+     or public.df20_handle_problem('cocktail') is not null then
+    raise exception 'DF20_SELFCHECK: the word filter is rejecting innocent names'; end if;
+  return 'usernames + leaderboard ok';
+end $$;
+revoke all on function public.df20_selfcheck_usernames() from public;
+
+select public.df20_selfcheck_usernames();
+
+-- ─────────── 0060_abandon_stale_rooms.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · 0055 · a room whose players walked away ends by itself
+--
+-- leave_room() handles somebody LEAVING: a button, a confirmation, a decision.
+-- It cannot handle the ordinary case, which is two people finishing a draft,
+-- closing the tab, and never touching it again. Nothing moves those rooms out
+-- of 'live', so they sit there until the 90-day purge — which is why the
+-- console's "live now" read 32 at half past ten on a Thursday.
+--
+-- WHY CRON AND NOT A TRIGGER. A trigger fires on an event. Staleness is the
+-- ABSENCE of events: when everyone has gone, nothing happens, so nothing
+-- would ever fire. Only something that wakes on a clock can notice silence.
+-- pg_cron is already installed here and already running two jobs, so this is
+-- a third one on proven ground rather than new infrastructure.
+--
+-- WHAT COUNTS AS ACTIVITY. Rooms carry no activity timestamp — df20_touch
+-- bumps an integer version, not a time — so this reads bid_events, which gets
+-- a row for every reveal, bid, pass and win. Same signal 0053 uses for "live
+-- now", so the console and the sweeper cannot disagree about what live means.
+--
+-- THE THRESHOLDS, and why they differ:
+--
+--   timed rooms      30 min   A turn is 15s by default and 300s at the very
+--                             longest. Half an hour of complete silence is
+--                             not a long think; it is an empty room.
+--
+--   no-limit rooms   60 min   timer_seconds = 0 means the bid deliberately
+--                             has no clock. "Nobody is rushing this bid" and
+--                             "nobody is here at all" are different states and
+--                             this is the line between them. Doubling the
+--                             window keeps a genuinely slow game alive.
+--
+--   unfilled lobby   12 hrs   A room nobody ever joined. Deliberately long:
+--                             a code made in the morning for a draft that
+--                             evening must still be there at kick-off. Twelve
+--                             hours clears the clutter without eating a room
+--                             somebody is actually about to use.
+--
+-- Nothing here touches bidding or bankrolls, and no room that finished is
+-- altered — only 'lobby' and 'live' are eligible.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- the sweeper reads these two statuses constantly and nothing else does
+create index if not exists rooms_open_status_idx
+  on public.rooms (status) where status in ('lobby', 'live');
+
+create or replace function public.df20_abandon_stale()
+returns int language plpgsql security definer
+set search_path = public, pg_temp as $$
+declare r record; n int := 0;
+begin
+  for r in
+    select ro.id, ro.code
+      from public.rooms ro
+     where ro.status in ('lobby', 'live')
+       and case
+             -- never filled, and old enough that nobody is coming
+             when ro.status = 'lobby' then
+               ro.created_at < now() - interval '12 hours'
+
+             -- started, then silence. The clock the room was set up with
+             -- decides how much silence is too much.
+             else
+               coalesce(
+                 (select max(e.created_at) from public.bid_events e
+                   where e.room_id = ro.id),
+                 ro.started_at,
+                 ro.created_at
+               ) < now() - (case when coalesce(ro.timer_seconds, 15) = 0
+                                 then interval '60 minutes'
+                                 else interval '30 minutes' end)
+           end
+  loop
+    begin
+      /* The same ending leave_room writes, so a draft that was walked away
+         from and one that was left on purpose come out identical. The only
+         difference is abandoned_by, which stays NULL here — nobody chose
+         this — and the room screen already reads that as "This draft was
+         abandoned" rather than naming a person. */
+      update public.lots
+         set status = 'void', on_the_clock_player_id = null,
+             turn_expires_at = null, resolved_at = now()
+       where room_id = r.id and status in ('offered','bidding');
+
+      update public.rooms
+         set status = 'abandoned',
+             phase = 'complete',
+             abandoned_at = now(),
+             completed_at = coalesce(completed_at, now())
+       where id = r.id;
+
+      perform public.df20_touch(r.id);
+      perform public.df20_broadcast(r.id);   -- anyone still watching sees it
+      n := n + 1;
+    exception when others then null;   -- one stuck room must not stall the sweep
+    end;
+  end loop;
+  return n;
+end $$;
+
+revoke all on function public.df20_abandon_stale() from public;
+revoke all on function public.df20_abandon_stale() from anon, authenticated;
+
+-- Every five minutes. The thresholds are half-hours; polling faster would buy
+-- nothing and cost a query.
+do $$
+begin
+  perform cron.unschedule('df20_abandon_stale');
+exception when others then null;
+end $$;
+
+do $$
+begin
+  perform cron.schedule('df20_abandon_stale', '*/5 * * * *',
+                        'select public.df20_abandon_stale();');
+  raise notice 'stale-room sweeper scheduled every 5 minutes.';
+exception when others then
+  raise notice 'pg_cron unavailable. Stale rooms will not be swept.';
+end $$;
+
+-- ─────────── 0061_one_free_lookup.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · 0057 · one free category lookup, so the paywall has a memory
+--
+-- "Type your own" is the feature worth paying for and the one nobody has
+-- seen. A padlock in front of it asks for money against an imagined benefit.
+-- This gives every signed-in free account ONE room built from a typed
+-- category — full size, nothing held back — and puts the wall at the second
+-- one, where the pitch is "again" rather than "at all".
+--
+-- WHY THE UNIT IS A LOOKUP AND NOT A DECK. save_room_deck() has always been
+-- free, but a free account can only ever save a room it was allowed to
+-- create, which means a shelf category — a copy of something already on the
+-- shelf. There is no free path to original content, so "one free saved deck"
+-- would hand somebody a duplicate and teach them nothing. The lookup is the
+-- moment that sells the tier; that is what has to be given away.
+--
+-- WHY NOT A CREDIT COLUMN. The allowance is counted from rooms that exist:
+--
+--   not exists (select 1 from rooms where host_profile_id = me
+--                 and pool_source = 'wikipedia')
+--
+-- No column to migrate, nothing to get out of step with reality, and a room
+-- deleted by the 90-day purge quietly returns the credit — which is a fair
+-- reading of "you have not got one any more" and cheaper than defending
+-- against it.
+--
+-- Anonymous hosts are unchanged: v_uid is null for them, so they cannot
+-- consume an allowance that has nobody to bill later. Content Creator mode
+-- and the other pool sources are untouched.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+create or replace function public.create_room(
+  p_title text, p_roster_size int, p_bankroll_cents int, p_min_bid_cents int,
+  p_timer_seconds int, p_host_name text, p_is_private boolean default true,
+  p_gives_per_player int default 2, p_brand_accent text default null,
+  p_brand_logo_url text default null,
+  p_pool_source text default 'builtin', p_pool_ref uuid default null,
+  p_content_mode text default 'standard',
+  p_allow_broke boolean default true
+) returns jsonb language plpgsql security definer
+set search_path = public, pg_temp as $BODY$
+
+declare v_room public.rooms; v_pl public.players; v_uid uuid; v_accent text; v_n int;
+begin
+  if coalesce(p_pool_source, 'builtin') in ('wikipedia','saved') then
+    v_uid := public.df20_require_verified();
+  else
+    v_uid := public.df20_ensure_profile();   -- null when signed out, which is fine
+  end if;
+
+  if coalesce(p_pool_source, 'builtin') = 'saved' then
+    if not exists (select 1 from public.user_categories
+                    where id = p_pool_ref and owner_id = v_uid) then
+      raise exception 'DF20_NOT_YOUR_DECK';
+    end if;
+  end if;
+
+  -- FREE IS THE SHELF. builtin and library stay open to everyone, signed in
+  -- or not; anything the host supplies themselves is premium — with one
+  -- deliberate exception, below.
+  if coalesce(p_pool_source, 'builtin') not in ('builtin', 'library')
+     and (v_uid is null or not public.df20_premium_active(v_uid)) then
+
+    /* ONE FREE LOOKUP, EVER. A padlock on "type your own" asks people to pay
+       for a thing they have never seen work. This lets a signed-in free
+       account build ONE room from a typed category, at full size with
+       nothing crippled, so the pitch becomes "you have done this once" —
+       and the wall arrives the moment they want to do it again.
+
+       Counted from rooms actually created, not from an allowance column, so
+       there is no state to get out of step and nothing to reset. Only
+       'wikipedia' qualifies: 'saved' and 'manual' both depend on content a
+       free account has no way to produce, so giving those away free would
+       unlock an empty room rather than the feature. */
+    if coalesce(p_pool_source, '') = 'wikipedia'
+       and v_uid is not null
+       and not exists (select 1 from public.rooms r
+                        where r.host_profile_id = v_uid
+                          and r.pool_source = 'wikipedia') then
+      null;   -- their one free build; fall through and make the room
+    else
+      raise exception 'DF20_PREMIUM_REQUIRED';
+    end if;
+  end if;
+
+  -- CONTENT CREATOR is chosen here, at creation, and never changes. The
+  -- room's whole layout is decided by this column, so letting it be flipped
+  -- mid-draft would mean re-laying-out a board somebody is streaming.
+  p_content_mode := coalesce(nullif(btrim(lower(p_content_mode)), ''), 'standard');
+  if p_content_mode not in ('standard', 'creator') then
+    raise exception 'DF20_BAD_CONTENT_MODE';
+  end if;
+  if p_content_mode = 'creator'
+     and (v_uid is null or not public.df20_premium_active(v_uid)) then
+    raise exception 'DF20_PREMIUM_REQUIRED';
+  end if;
+
+  p_title := public.df20_clean_text(p_title, 60);
+  if length(p_title) = 0 then p_title := 'Football Draft'; end if;
+  p_host_name := public.df20_clean_text(p_host_name, 24);
+  if length(p_host_name) = 0 then raise exception 'DF20_BAD_NAME'; end if;
+
+  if p_roster_size is null or p_roster_size < 1 or p_roster_size > 30
+    then raise exception 'DF20_BAD_ROSTER_SIZE'; end if;
+  if p_bankroll_cents is null or p_bankroll_cents < 0 or p_bankroll_cents > 10000000
+    then raise exception 'DF20_BAD_BANKROLL'; end if;
+  if p_min_bid_cents is null or p_min_bid_cents < 0 or p_min_bid_cents > 1000000
+    then raise exception 'DF20_BAD_MIN_BID'; end if;
+  -- 0 is the no-limit sentinel; 1 and 2 seconds are still nonsense
+  if p_timer_seconds is null
+     or not (p_timer_seconds = 0 or p_timer_seconds between 3 and 300)
+    then raise exception 'DF20_BAD_TIMER'; end if;
+  if p_gives_per_player is null or p_gives_per_player < 0 or p_gives_per_player > 30
+    then raise exception 'DF20_BAD_GIVES'; end if;
+
+  v_accent := public.df20_clean_text(p_brand_accent, 9);
+  if v_accent = '' then v_accent := null; end if;
+  if v_accent is not null and v_accent !~ '^#[0-9A-Fa-f]{6}$'
+    then raise exception 'DF20_BAD_ACCENT'; end if;
+
+  insert into public.rooms (code, title, roster_size, starting_bankroll_cents,
+                            min_bid_cents, timer_seconds, gives_per_player,
+                            is_private, brand_accent, brand_logo_url, host_profile_id,
+                            content_mode, allow_broke)
+  values (public.df20_gen_code(), p_title, p_roster_size, p_bankroll_cents,
+          p_min_bid_cents, p_timer_seconds, p_gives_per_player,
+          coalesce(p_is_private, true), v_accent,
+          public.df20_clean_logo_url(p_brand_logo_url), v_uid,
+          p_content_mode, coalesce(p_allow_broke, true))
+  returning * into v_room;
+
+  v_n := public.df20_fill_pool(v_room.id, coalesce(p_pool_source, 'builtin'), p_pool_ref);
+  if v_n < p_roster_size * 2 then raise exception 'DF20_POOL_TOO_SMALL'; end if;
+
+  insert into public.players (room_id, seat, display_name, bankroll_cents, is_host, profile_id)
+  values (v_room.id, 1, p_host_name, p_bankroll_cents, true, v_uid)
+  returning * into v_pl;
+
+  return jsonb_build_object('room_id', v_room.id, 'code', v_room.code,
+                            'player_id', v_pl.id, 'session_token', v_pl.session_token,
+                            'seat', 1, 'pool_size', v_n,
+                            'content_mode', v_room.content_mode);
+end 
+$BODY$;
+grant execute on function public.create_room(
+  text,int,int,int,int,text,boolean,int,text,text,text,uuid,text,boolean) to anon, authenticated;
+
+-- how many free lookups this account has left, for the button that offers it
+create or replace function public.my_free_lookup()
+returns jsonb language sql stable security definer
+set search_path = public, pg_temp as $$
+  select jsonb_build_object(
+    'signed_in', (select auth.uid()) is not null,
+    'used', (select auth.uid()) is not null and exists (
+              select 1 from public.rooms r
+               where r.host_profile_id = (select auth.uid())
+                 and r.pool_source = 'wikipedia'));
+$$;
+grant execute on function public.my_free_lookup() to anon, authenticated;
+
+notify pgrst, 'reload schema';
+
+-- ─────────── 0062_daily_finished.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · 0058 · finished drafts on the same chart as created rooms
+--
+-- The bar chart plotted rooms created and nothing else, which is the number
+-- that already misleads: most rooms never find a second player, so a tall bar
+-- says nothing about whether anybody played. Putting finished drafts on the
+-- same axes makes the gap between the two the thing you actually see.
+--
+-- The two series are deliberately different cohorts. `rooms` is created that
+-- day; `finished` is completed that day. A room opened on Monday and played
+-- out on Tuesday is in Monday's bar and Tuesday's line. For trends that is
+-- the right pairing. For "of the rooms we made, how many got played", the
+-- weekly funnel from 0052 is the cohort answer and this is not.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+create or replace function public.admin_activity()
+returns jsonb language plpgsql stable security definer
+set search_path = public, pg_temp as $BODY$
+
+declare v_since timestamptz := now() - interval '7 days';
+begin
+  if not public.df20_is_admin() then raise exception 'DF20_NOT_AUTHORISED'; end if;
+
+  return jsonb_build_object(
+    'rooms', jsonb_build_object(
+      'total',  (select count(*) from public.rooms where code is not null),
+      'today',  (select count(*) from public.rooms
+                  where code is not null and created_at >= date_trunc('day', now())),
+      'week',   (select count(*) from public.rooms
+                  where code is not null and created_at >= v_since),
+      'complete',(select count(*) from public.rooms where status = 'complete'),
+
+      -- ── the headline: drafts that actually FINISHED ───────────────────
+      'finished_today', (select count(*) from public.rooms
+                          where status = 'complete'
+                            and completed_at >= date_trunc('day', now())),
+      'finished_week',  (select count(*) from public.rooms
+                          where status = 'complete' and completed_at >= v_since),
+
+      -- ── live means live ───────────────────────────────────────────────
+      -- Somebody has touched this draft in the last fifteen minutes. A turn
+      -- is fifteen seconds by default and five minutes at the longest, so a
+      -- game in progress cannot be quiet for that long; a game whose players
+      -- shut the laptop goes quiet immediately.
+      'live', (select count(*) from public.rooms r
+                where r.status = 'live'
+                  and exists (select 1 from public.bid_events e
+                               where e.room_id = r.id
+                                 and e.created_at > now() - interval '15 minutes')),
+
+      -- started, never finished, nobody home. Not concurrency — backlog.
+      'live_idle', (select count(*) from public.rooms r
+                     where r.status = 'live'
+                       and not exists (select 1 from public.bid_events e
+                                        where e.room_id = r.id
+                                          and e.created_at > now() - interval '15 minutes')),
+
+      -- ── the same seven days, narrowed at each step ────────────────────
+      -- A room that never found a second player was never a game. Counting
+      -- the drop-off is the only way to read the top number honestly.
+      'week_joined', (select count(*) from public.rooms r
+                       where r.code is not null and r.created_at >= v_since
+                         and (select count(*) from public.players p
+                               where p.room_id = r.id) >= 2),
+      'week_started', (select count(*) from public.rooms
+                        where code is not null and created_at >= v_since
+                          and started_at is not null),
+      'week_complete', (select count(*) from public.rooms
+                         where code is not null and created_at >= v_since
+                           and status = 'complete'),
+      -- created, never joined by anyone but the host, and now stale
+      'week_empty', (select count(*) from public.rooms r
+                      where r.code is not null and r.created_at >= v_since
+                        and (select count(*) from public.players p
+                              where p.room_id = r.id) < 2)),
+
+    /* Two series over the same fourteen days. `rooms` counts what was
+       CREATED that day; `finished` counts what was COMPLETED that day, which
+       is a different cohort on purpose — a room opened on Monday and played
+       out on Tuesday belongs to Monday's creation and Tuesday's finish. Read
+       as trend lines that is the honest pairing; for "of what we made, how
+       much got played", the weekly funnel above is the cohort answer. */
+    'daily', coalesce((
+      select jsonb_agg(jsonb_build_object('day', d::date, 'rooms', n,
+                                          'finished', f) order by d)
+        from (select g.d,
+                     (select count(*) from public.rooms r
+                       where r.code is not null
+                         and r.created_at >= g.d
+                         and r.created_at < g.d + interval '1 day') as n,
+                     (select count(*) from public.rooms r
+                       where r.status = 'complete'
+                         and r.completed_at >= g.d
+                         and r.completed_at < g.d + interval '1 day') as f
+                from generate_series(date_trunc('day', now()) - interval '13 days',
+                                     date_trunc('day', now()), interval '1 day') g(d)) s),
+      '[]'::jsonb),
+
+    'categories', jsonb_build_object(
+      'football', (select count(*) from public.rooms
+                    where code is not null and category_name = 'Football Draft'),
+      'other_library', (select count(*) from public.rooms
+                         where code is not null and pool_source in ('builtin','library')
+                           and coalesce(category_name,'') <> 'Football Draft'),
+      'wikipedia', (select count(*) from public.rooms
+                     where code is not null and pool_source = 'wikipedia'),
+      'manual', (select count(*) from public.rooms
+                  where code is not null and pool_source = 'manual'),
+      'saved', (select count(*) from public.rooms
+                 where code is not null and pool_source = 'saved')),
+
+    'modes', jsonb_build_object(
+      'standard', (select count(*) from public.rooms
+                    where code is not null and content_mode = 'standard'),
+      'creator', (select count(*) from public.rooms
+                   where code is not null and content_mode = 'creator')),
+
+    'duration', (
+      select jsonb_build_object(
+               'sample', count(*),
+               'avg_seconds', round(avg(secs)),
+               'median_seconds', round(percentile_cont(0.5) within group (order by secs)))
+        from (select extract(epoch from (completed_at - started_at)) as secs
+                from public.rooms
+               where status = 'complete'
+                 and started_at is not null and completed_at is not null
+                 and completed_at > started_at
+                 and completed_at - started_at < interval '12 hours') d),
+
+    'library', jsonb_build_object(
+      'public', (select count(*) from public.category_library),
+      'pending', (select count(*) from public.rooms where library_optin_state = 'pending'),
+      'saved_decks', (select count(*) from public.user_categories)),
+
+    'audience', jsonb_build_object(
+      'votes', (select count(*) from public.audience_votes),
+      'rooms_voted_on', (select count(distinct room_id) from public.audience_votes)),
+
+    'premium', jsonb_build_object(
+      'active', (select count(*) from public.profiles where premium_until > now()),
+      'by_source', coalesce((select jsonb_object_agg(coalesce(premium_source,'none'), n)
+                               from (select premium_source, count(*) as n
+                                       from public.profiles
+                                      where premium_until > now()
+                                      group by premium_source) s), '{}'::jsonb)));
+end 
+$BODY$;
+grant execute on function public.admin_activity() to authenticated;
+
+notify pgrst, 'reload schema';
+
+-- ─────────── 0063_clean_names.sql ───────────
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DraftFor20 · 0063 · PG names, and a name that is already taken says so
 --
 -- TWO RULES, BOTH IN POSTGRES.
 --
@@ -12372,10 +12997,10 @@ begin
     (select count(*) from public.df20_profanity);
 end $$;
 
--- ─────────── 0059_quick_play.sql ───────────
+-- ─────────── 0064_quick_play.sql ───────────
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- DraftFor20 · 0059 · Quick Play: one human, one bot
+-- DraftFor20 · 0064 · Quick Play: one human, one bot
 --
 -- THE BOT IS A PLAYER ROW, NOT A NEW CODE PATH. It gets a seat, a bankroll,
 -- gives, and a session token like anybody else, and it acts by calling
@@ -12677,10 +13302,10 @@ begin
   raise notice 'quick play ok - bot acts through the ordinary rpcs, deck sealed';
 end $$;
 
--- ─────────── 0060_restore_force_or_take.sql ───────────
+-- ─────────── 0065_restore_force_or_take.sql ───────────
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- DraftFor20 · 0060 · restore Force-or-Take, and a tripwire so it stays
+-- DraftFor20 · 0065 · restore Force-or-Take, and a tripwire so it stays
 --
 -- 0055 was applied and working, and something overwrote it. bid_events dates
 -- the regression exactly: 'offer_forced' fired 37 times on 6 Sep and 92 on

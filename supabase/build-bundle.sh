@@ -31,15 +31,24 @@ FILES=(
   # df20_clean_logo_url outage, a caller applied before its dependency.
   0055_force_or_take
   0057_usernames_and_leaderboard
+  0058_username_word_filter
+  0060_abandon_stale_rooms
+  0061_one_free_lookup
+  0062_daily_finished
   # AFTER 0057: the profanity trigger guards profiles.handle, and that column
   # only becomes user-chosen in 0057. Applied before it, the trigger would
   # reference handle_chosen before the column exists.
-  0058_clean_names
-  0059_quick_play
+  #
+  # NOTE: 0058_username_word_filter is a SECOND, independent word filter for
+  # handles, written in parallel. Handles are currently checked twice against
+  # two different lists. See the header of 0063 — this needs resolving, not
+  # leaving.
+  0063_clean_names
+  0064_quick_play
   # LAST, and it is an assertion rather than a definition: 0055 was applied,
   # worked for two days, and was silently overwritten by a restated
   # offer_decide. A comment did not prevent that. This fails the bundle.
-  0060_restore_force_or_take
+  0065_restore_force_or_take
 )
 
 {

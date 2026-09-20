@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- DraftFor20 · 0060 · restore Force-or-Take, and a tripwire so it stays
+-- DraftFor20 · 0065 · restore Force-or-Take, and a tripwire so it stays
 --
 -- 0055 was applied and working, and something overwrote it. bid_events dates
 -- the regression exactly: 'offer_forced' fired 37 times on 6 Sep and 92 on
