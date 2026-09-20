@@ -46,16 +46,21 @@ $$;
 -- ── the fallback decision ─────────────────────────────────────────────────
 -- Pure economics against the same numbers the board shows. Returns the same
 -- shape the LLM is asked for, so the two are interchangeable at the call site.
+-- SECURITY DEFINER because rooms/players/lots are deny-all; without it this
+-- works when called from inside df20_bot_turn and dies when called directly.
+-- Reads players.gives_USED — gives_left is computed in df20_public_state and
+-- is not a column, which plpgsql does not catch until the bot's first turn.
 create or replace function public.df20_bot_heuristic(p_code text)
-returns jsonb language plpgsql stable
+returns jsonb language plpgsql stable security definer
 set search_path = public, pg_temp as $$
 declare
   v_room public.rooms; v_lot public.lots; v_bot public.players;
   v_opp public.players; v_appetite int; v_max int; v_ceiling int; v_next int;
+  v_gives_left int; v_open int; v_opp_open int;
+  v_can_take boolean; v_can_give boolean;
 begin
   select * into v_room from public.rooms where code = upper(btrim(p_code));
   if not found then return jsonb_build_object('action','none','why','no room'); end if;
-
   select * into v_bot from public.players where room_id = v_room.id and is_bot;
   if not found then return jsonb_build_object('action','none','why','no bot'); end if;
   select * into v_opp from public.players where room_id = v_room.id and not is_bot;
@@ -68,32 +73,36 @@ begin
     return jsonb_build_object('action','none','why','not the bot turn');
   end if;
 
-  v_appetite := public.df20_bot_appetite(v_room.id, v_lot.item_name);
-  v_max := public.df20_max_legal_bid(v_bot.bankroll_cents, v_room.min_bid_cents,
-                                     public.df20_open_slots(v_room.id, v_bot.id),
-                                     v_room.allow_broke);
+  v_open       := public.df20_open_slots(v_room.id, v_bot.id);
+  v_opp_open   := public.df20_open_slots(v_room.id, v_opp.id);
+  v_gives_left := greatest(v_room.gives_per_player - v_bot.gives_used, 0);
+  v_appetite   := public.df20_bot_appetite(v_room.id, v_lot.item_name);
+  v_max        := public.df20_max_legal_bid(v_bot.bankroll_cents, v_room.min_bid_cents,
+                                            v_open, v_room.allow_broke);
+  v_can_take   := v_max >= v_room.min_bid_cents and v_open > 0;
+  v_can_give   := v_opp_open > 0 and v_gives_left > 0;
 
-  -- ── opening a fresh card ────────────────────────────────────────────────
   if v_lot.status = 'offered' then
-    -- A give costs the opponent a slot and costs the bot only a give, so it
-    -- is worth spending on cards the bot does not want — but only while the
-    -- opponent still has room, and never on something it actually likes.
-    if v_appetite < 30
-       and v_bot.gives_left > 0
-       and public.df20_open_slots(v_room.id, v_opp.id) > 0 then
+    -- The bot goes broke too. Mirrors offer_decide's branch order exactly:
+    -- force when Take is unaffordable, or the solo draft stalls in the way
+    -- Force-or-Take exists to prevent.
+    if not v_can_take and v_open > 0 then
+      return jsonb_build_object('action','force','why',
+        format('broke with %s slot(s) owed, taking it free', v_open));
+    end if;
+    if v_appetite < 30 and v_can_give then
       return jsonb_build_object('action','give','why',
         format('appetite %s, giving it away', v_appetite));
     end if;
-    return jsonb_build_object('action','take','why',
-      format('appetite %s, taking at the minimum', v_appetite));
+    if v_can_take then
+      return jsonb_build_object('action','take','why',
+        format('appetite %s, taking at the minimum', v_appetite));
+    end if;
+    return jsonb_build_object('action','discard','why','nothing legal but letting it go');
   end if;
 
-  -- ── responding to a bid ─────────────────────────────────────────────────
-  -- Ceiling scales with appetite against what the bot can legally spend. At
-  -- appetite 100 it will go to its limit; at 0 it will not raise at all.
   v_ceiling := (v_max * v_appetite) / 100;
   v_next := v_lot.current_bid_cents + v_room.min_bid_cents;
-
   if v_next <= least(v_ceiling, v_max) then
     return jsonb_build_object('action','bid','amount_cents', v_next, 'why',
       format('appetite %s, ceiling %s, raising to %s', v_appetite, v_ceiling, v_next));
@@ -147,7 +156,7 @@ begin
       'name', v_bot.display_name,
       'bankroll_cents', v_bot.bankroll_cents,
       'open_slots', public.df20_open_slots(v_room.id, v_bot.id),
-      'gives_left', v_bot.gives_left,
+      'gives_left', greatest(v_room.gives_per_player - v_bot.gives_used, 0),
       'max_legal_bid_cents', public.df20_max_legal_bid(
           v_bot.bankroll_cents, v_room.min_bid_cents,
           public.df20_open_slots(v_room.id, v_bot.id), v_room.allow_broke),
@@ -159,7 +168,7 @@ begin
       'name', v_opp.display_name,
       'bankroll_cents', v_opp.bankroll_cents,
       'open_slots', public.df20_open_slots(v_room.id, v_opp.id),
-      'gives_left', v_opp.gives_left,
+      'gives_left', greatest(v_room.gives_per_player - v_opp.gives_used, 0),
       'roster', coalesce((select jsonb_agg(jsonb_build_object(
                             'item', e.item_name, 'price_cents', e.price_cents)
                             order by e.pick_number)
@@ -182,7 +191,7 @@ grant execute on function public.df20_bot_turn(text) to anon, authenticated;
 -- it can do is illegal, and there is no second player to defraud.
 create or replace function public.bot_act(
   p_code text, p_choice text, p_amount_cents int default null
-) returns jsonb language plpgsql
+) returns jsonb language plpgsql security definer
 set search_path = public, pg_temp as $$
 declare
   v_room public.rooms; v_bot public.players; v_lot public.lots; v_seq int;
@@ -203,7 +212,7 @@ begin
   end if;
   v_seq := v_lot.turn_seq;
 
-  if p_choice in ('take','give','discard') then
+  if p_choice in ('take','give','force','discard') then
     return public.offer_decide(p_code, v_bot.session_token, p_choice);
   elsif p_choice = 'bid' then
     return public.place_bid(p_code, v_bot.session_token,

@@ -100,6 +100,13 @@ function Join() {
         <p className="mt-2 text-[0.9375rem] text-muted">
           Type the code your host sent. No account, no email.
         </p>
+        <p className="mt-2 text-[0.875rem] text-muted">
+          Nobody to play with?{" "}
+          <a href="/quick-play" className="text-ink underline">
+            Draft against The House
+          </a>
+          .
+        </p>
 
         <div className="mt-7 flex flex-col gap-5">
           <Field label="room code" htmlFor="code">

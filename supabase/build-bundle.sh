@@ -35,6 +35,11 @@ FILES=(
   # only becomes user-chosen in 0057. Applied before it, the trigger would
   # reference handle_chosen before the column exists.
   0058_clean_names
+  0059_quick_play
+  # LAST, and it is an assertion rather than a definition: 0055 was applied,
+  # worked for two days, and was silently overwritten by a restated
+  # offer_decide. A comment did not prevent that. This fails the bundle.
+  0060_restore_force_or_take
 )
 
 {

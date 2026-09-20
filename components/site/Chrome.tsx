@@ -61,6 +61,9 @@ export function Footer() {
         <Link href="/20-dollar-draft" className="text-[0.8125rem] text-muted hover:text-ink">
           What is the $20 draft?
         </Link>
+        <Link href="/quick-play" className="text-[0.8125rem] text-muted hover:text-ink">
+          Quick Play
+        </Link>
         <Link href="/how-to-play" className="text-[0.8125rem] text-muted hover:text-ink">
           How to play
         </Link>

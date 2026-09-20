@@ -26,6 +26,8 @@ export interface Room {
   /** true: a bid may spend the whole bankroll and Force-or-Take covers the
    *  rest. false: the Reserve Rule keeps back the minimum per open slot. */
   allow_broke: boolean;
+  /** true when seat 2 is the Quick Play bot. Set at creation, never changed. */
+  is_solo: boolean;
   is_private: boolean;
   brand_accent: string | null;
   brand_logo_url: string | null;
@@ -47,6 +49,8 @@ export interface Player {
   display_name: string;
   bankroll_cents: number;
   is_host: boolean;
+  /** the Quick Play opponent. Acts through the ordinary RPCs like anyone else. */
+  is_bot: boolean;
   profile_id: string | null;
   gives_used: number;
   last_seen_at: string;

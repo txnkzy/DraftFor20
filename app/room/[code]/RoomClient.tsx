@@ -23,6 +23,7 @@ import { saveSeat, setActiveSeat, useSeat, useSeats, type Seat } from "@/lib/gam
 import { rosterOf, type RoomState } from "@/lib/game/types";
 import { givesAreUnlimited } from "@/lib/game/rules";
 import { useCountdown, useRoom } from "@/lib/game/useRoom";
+import { useBotTurn } from "@/lib/game/useBotTurn";
 import { buildBoardView, seatAccent } from "@/lib/game/view";
 import { formatCents } from "@/lib/money";
 import { armAudio, cueLock, cueRaise, cueTick, setMuted, useAudioReady, useMuted } from "@/lib/sound";
@@ -48,6 +49,10 @@ function RoomLive({ code }: { code: string }) {
     pending, loaded, serverNow, actions, refresh,
   } = useRoom(code, seat);
   const cd = useCountdown(state?.lot?.turn_expires_at, serverNow, state?.room.timer_seconds ?? 15);
+  /* Quick Play: this browser is what makes the opponent move. bot_act is a
+     no-op unless it really is the bot's turn, so nothing here can misfire in
+     an ordinary two-human room — is_solo is false and the hook returns. */
+  const botTurn = useBotTurn(state, code, refresh);
   const premium = usePremium();
   const [recording, setRecording] = useState(false);
 
@@ -519,6 +524,27 @@ function RoomLive({ code }: { code: string }) {
         />
 
       </div>
+
+      {/* Quick Play: say what the opponent is doing. A bot that acts in
+          silence reads as the board glitching, and the reason it gives is
+          most of what makes it feel like an opponent rather than a script. */}
+      {state.room.is_solo && (botTurn.thinking || botTurn.lastMove) ? (
+        <p className="border-b px-4 py-2 text-center text-[0.8125rem] text-muted rule">
+          {botTurn.thinking ? (
+            <span className="type-label text-gold">{botTurn.botName} is deciding…</span>
+          ) : (
+            <>
+              <span className="type-label text-gold">{botTurn.botName}</span>{" "}
+              <span className="text-ink">{botTurn.lastMove?.action}</span>
+              {botTurn.lastMove?.amount_cents
+                ? ` $${(botTurn.lastMove.amount_cents / 100).toFixed(2)}`
+                : ""}
+              {" — "}
+              {botTurn.lastMove?.why}
+            </>
+          )}
+        </p>
+      ) : null}
 
       {error ? (
         <p className="anim-reject border-b border-coral bg-coral/15 px-4 py-2 text-center text-[0.8125rem] text-ink">
