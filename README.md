@@ -8,6 +8,11 @@ app produces a vertical 1080×1920 results card ready to post.
 Next.js (App Router) · TypeScript · Tailwind v4 · Supabase (Postgres, Realtime,
 Auth) · deploys to Vercel.
 
+> **Engineering documentation lives in [`docs/`](docs/README.md).** Start
+> there for the full picture — product rules, architecture, the database and
+> RPC catalogue, security, the image pipeline, billing, and the gotcha list.
+> This README covers setup and day-to-day commands.
+
 ---
 
 ## Setup

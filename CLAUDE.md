@@ -10,6 +10,11 @@ produces a vertical 1080×1920 results card.
 **Stack:** Next.js 16 (App Router) · React 19 · TypeScript · Tailwind v4 ·
 Supabase (Postgres + Realtime + Auth) · Vercel
 
+> **Full engineering documentation is in [`docs/`](docs/README.md).**
+> This file is the short ruleset; `docs/` is the long-form reference and
+> the two are kept in step. `docs/10-gotchas.md` is the highest
+> value-per-minute page in the repo.
+
 ---
 
 ## The two rules that govern everything
