@@ -48,6 +48,9 @@ export function Header({ thin = false }: { thin?: boolean }) {
           >
             Board
           </Link>
+          <Link href="/rank" className="type-label whitespace-nowrap text-muted hover:text-ink">
+            Lineup
+          </Link>
           <PricingLink />
           <HeaderAccount />
           <Link href="/new" className="type-label whitespace-nowrap text-gold hover:text-ink">

@@ -70,6 +70,10 @@ FILES=(
   20260920135142_football_draft_recognisable
   # AFTER the rematch file, which it restates create_rematch from.
   0068_rematch_same_category
+  # AFTER 0067, which is where df20_solo_quota is defined: this one
+  # restates it to count lineups alongside solo rooms. Applied before it,
+  # the older body wins and the daily cap silently stops seeing lineups.
+  0069_lineups
   # ABSOLUTELY LAST. Four files define offer_decide and three of them have no
   # force branch, so whichever runs last wins. This one restores it. Lost
   # twice already — 8 Sep (12 days, ~550 dead drafts) and again on 20 Sep
